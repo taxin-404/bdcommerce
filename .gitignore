@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Builds
+.next/
+dist/
+build/
+.vercel/
+.output/
+.open-next/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Cloudflare / Wrangler
+.wrangler/
+.dev.vars
+.dev.vars.local
+node_modules/.cache/
+
+# Environment
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Uploads / local data
+storage/
+uploads/
+*.db
+*.sqlite
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Coverage / tests
+coverage/
+
+# Local dev server helper artifacts
+apps/api/.dev-server.pid
+apps/api/.dev-server.log

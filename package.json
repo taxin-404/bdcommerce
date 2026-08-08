@@ -1,0 +1,41 @@
+{
+  "name": "bdcommerce",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BDCommerce — production-ready e-commerce template for Bangladesh. Next.js 15 storefront + admin on Cloudflare Pages, Hono API on Cloudflare Workers, D1 + Drizzle ORM.",
+  "license": "SEE LICENSE IN LICENSE",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:api",
+    "dev:api": "npm run dev --workspace=@bd/api",
+    "dev:storefront": "npm run dev --workspace=@bd/storefront",
+    "dev:admin": "npm run dev --workspace=@bd/admin",
+    "build": "npm run build:api && npm run build:storefront && npm run build:admin",
+    "build:api": "npm run build --workspace=@bd/api",
+    "build:storefront": "npm run build --workspace=@bd/storefront",
+    "build:admin": "npm run build --workspace=@bd/admin",
+    "deploy:storefront": "npm run deploy --workspace=@bd/storefront",
+    "deploy:admin": "npm run deploy --workspace=@bd/admin",
+    "deploy:api": "npm run deploy --workspace=@bd/api",
+    "db:generate": "npm run db:generate --workspace=@bd/db",
+    "db:apply": "npm run db:apply --workspace=@bd/db",
+    "db:apply:remote": "npm run db:apply:remote --workspace=@bd/db",
+    "db:seed": "npm run db:seed --workspace=@bd/db",
+    "db:studio": "npm run db:studio --workspace=@bd/db",
+    "lint": "npm run lint --workspace=@bd/core",
+    "typecheck": "npm run typecheck --workspace=@bd/core && npm run typecheck --workspace=@bd/db && npm run typecheck --workspace=@bd/api && npm run typecheck --workspace=@bd/storefront && npm run typecheck --workspace=@bd/admin",
+    "test": "npm run test --workspace=@bd/core",
+    "setup": "bash scripts/setup.sh"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "prettier": "^3.4.2"
+  }
+}

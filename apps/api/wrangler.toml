@@ -1,0 +1,46 @@
+name = "bdcommerce-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# ---------------------------------------------------------------------------
+# Cloudflare D1 database (SQLite at the edge)
+# Create with: wrangler d1 create bdcommerce
+# then paste the returned database_id below.
+# ---------------------------------------------------------------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "bdcommerce"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "../../packages/db/drizzle"
+
+# ---------------------------------------------------------------------------
+# Cloudflare R2 bucket (product images / media)
+# Create with: wrangler r2 bucket create bdcommerce-media
+# ---------------------------------------------------------------------------
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "bdcommerce-media"
+
+# ---------------------------------------------------------------------------
+# Cloudflare KV (sessions cache / rate limiting fallback / short cache)
+# Create with: wrangler kv namespace create bdcommerce-kv
+# then paste the returned id below.
+# ---------------------------------------------------------------------------
+[[kv_namespaces]]
+binding = "KV"
+id = "00000000000000000000000000000000"
+
+[vars]
+ENVIRONMENT = "development"
+COOKIE_DOMAIN = ""
+ALLOWED_ORIGINS = "http://localhost:3000,http://localhost:3001,http://localhost:8787"
+JWT_ACCESS_TTL = "900"
+JWT_REFRESH_TTL = "2592000"
+R2_PUBLIC_URL = ""
+
+# Secrets (set via `wrangler secret put` or apps/api/.dev.vars):
+# JWT_SECRET

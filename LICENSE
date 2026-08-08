@@ -1,0 +1,72 @@
+BDCOMMERCE — COMMERCIAL LICENSE
+================================
+
+Copyright (c) 2026 taxin-404
+
+This software is licensed under a split commercial license: a Regular
+License for single end-usage and an Extended License for unlimited end
+products / SaaS. The source code is NOT open source. By purchasing,
+cloning, or using this template you agree to the terms below.
+
+---------------------------------------------------------------------------
+1. GRANT OF LICENSE
+---------------------------------------------------------------------------
+
+REGULAR LICENSE
+- For ONE website / online store / end client ("one end product").
+- You may modify the template for that single end product.
+- You may NOT resell, relicense, sublicense, or redistribute the template
+  or any substantial portion of it as a product (including "buyer-less"
+  resale on marketplaces) unless purchased under the Extended License.
+
+EXTENDED LICENSE
+- For UNLIMITED end products / end clients.
+- You may use the template for any number of client projects.
+- You may NOT claim the template itself as your own original work, nor
+  remove copyright/attribution notices from the codebase.
+
+In both cases the underlying template (as shipped) may only be resold or
+sublicensed if you have purchased the Extended License.
+
+---------------------------------------------------------------------------
+2. PERMISSIONS
+---------------------------------------------------------------------------
+
+- Use the template for commercial projects (your store or a client's store).
+- Modify, customize, and integrate the template for the licensed end products.
+- Create derivative features for the licensed end products.
+
+---------------------------------------------------------------------------
+3. RESTRICTIONS
+---------------------------------------------------------------------------
+
+- You may not redistribute or resell the unmodified template as-is.
+- You may not remove the copyright notice from source files.
+- You may not use the template to build a competing template product
+  for resale (requires written permission).
+- You may not claim ownership of the original template code.
+
+---------------------------------------------------------------------------
+4. THIRD-PARTY SOFTWARE
+---------------------------------------------------------------------------
+
+This template integrates third-party libraries (Next.js, React, Tailwind
+CSS, shadcn/ui, Framer Motion, Hono, Drizzle ORM, Lucide icons, and others).
+These remain under their own licenses (mostly MIT / permissive). You are
+responsible for complying with those licenses in your end products.
+
+Payment gateways (bKash, Nagad, Rocket, Upay, SSLCommerz, etc.) and courier
+APIs (Pathao, Steadfast, RedX, Paperfly) are owned by their providers and
+require their own merchant agreements.
+
+---------------------------------------------------------------------------
+5. NO WARRANTY
+---------------------------------------------------------------------------
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
