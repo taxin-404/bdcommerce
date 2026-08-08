@@ -7,11 +7,14 @@ The backend is a Hono API running on Cloudflare Workers, backed by Cloudflare D1
 logic package, a React UI primitives package, and (planned) a Next.js 15
 storefront + admin dashboard on Cloudflare Pages.
 
+Everything runs on Cloudflare — no local database, server, or environment
+required. The API deploys in minutes and the schema ships with it.
+
 ## Status
 
 | Component | Workspace | Status |
 | --- | --- | --- |
-| API (Worker) | `apps/api` | Implemented, tested, runs locally |
+| API (Worker) | `apps/api` | Implemented, tested, deployable |
 | Domain logic / schemas | `packages/core` | Implemented, unit-tested |
 | DB schema + migrations | `packages/db` | Implemented, migrations generated |
 | UI primitives | `packages/ui` | Implemented (React components) |
@@ -20,7 +23,7 @@ storefront + admin dashboard on Cloudflare Pages.
 
 ## Tech stack
 
-- **Runtime**: Cloudflare Workers (workerd), Node ≥ 20
+- **Runtime**: Cloudflare Workers
 - **Framework**: [Hono](https://hono.dev), `@hono/zod-validator`, zod
 - **Data**: Cloudflare D1 + [Drizzle ORM](https://orm.drizzle.team), drizzle-kit
 - **Storage**: Cloudflare R2 (media), Cloudflare KV (short cache / rate-limit fallback)
@@ -38,73 +41,86 @@ packages/
   ui/             React component primitives
 ```
 
-## Getting started
+## Quick start (Cloudflare)
 
-```bash
-npm install
-```
+No local database or secrets setup needed — the Worker owns everything.
 
-Create `apps/api/.dev.vars` with your secrets (see `.env.example`):
+1. **Clone and install**
 
-```bash
-JWT_SECRET=<generate one: openssl rand -base64 48>
-```
+   ```bash
+   git clone git@github.com:taxin-404/bdcommerce.git
+   cd bdcommerce
+   npm install
+   ```
 
-Set up the local D1 database:
+2. **Provision Cloudflare resources**
 
-```bash
-npm run db:generate   # (re)generate a migration from the schema
-npm run db:apply      # apply migrations to the local D1 database
-npm run db:seed       # echo; demo seed lives in packages/db/drizzle/0001_seed.sql
-```
+   ```bash
+   cd apps/api
+   npx wrangler d1 create bdcommerce
+   npx wrangler r2 bucket create bdcommerce-media
+   npx wrangler kv namespace create bdcommerce-kv
+   ```
 
-> Migrations (including the demo seed `0001_seed.sql`) are applied automatically
-> by `npm run db:apply`.
+   Paste the returned `database_id` and KV `id` into `apps/api/wrangler.toml`.
 
-Start the API locally:
+3. **Set the JWT secret**
 
-```bash
-# option 1 — quick (wrangler dev on :8787)
-npm run dev:api
+   ```bash
+   npx wrangler secret put JWT_SECRET
+   ```
 
-# option 2 — managed dev server on :8799 with start/stop/restart/log helper
-./apps/api/dev-server.sh start
-./apps/api/dev-server.sh log
-./apps/api/dev-server.sh stop
-```
+   (Local-only dev can put it in `apps/api/.dev.vars` instead.)
 
-Verify it's up:
+4. **Apply schema + seed migrations to remote D1**
 
-```bash
-curl http://localhost:8799/health
-# {"ok":true,"data":{"status":"ok","database":"ok",...}}
-```
+   ```bash
+   npm run db:apply:remote
+   ```
 
-### Demo seed credentials
+   Migrations live in `packages/db/drizzle/` and ship with the repo — the schema
+   and the demo data seed (`0001_seed.sql`) are applied together. Remove the seed
+   migration before going live and seed your own data.
 
-After applying `0001_seed.sql` you can log in as admin:
+5. **Deploy**
 
-- **email**: `admin@bdcommerce.com`
-- **password**: `admin123`
+   ```bash
+   npm run deploy:api
+   ```
 
-The seed also adds two products (with variants), shipping zones (inside/outside
-Dhaka), payment methods (COD, bKash, Nagad, Rocket), a `WELCOME10` coupon, and a
-basic menu. Replace or delete the seed before any real deployment.
+   Verify: `curl https://<your-worker>.workers.dev/health`.
+
+6. **Create an admin**
+
+   Seed an initial `ADMIN` user in remote D1:
+
+   ```bash
+   npx wrangler d1 execute bdcommerce --remote \
+     --command "INSERT INTO users (id, email, name, password_hash, role, is_active, created_at, updated_at) VALUES ('...', 'you@example.com', 'Admin', '...pbkdf2 hash...', 'ADMIN', 1, ...);"
+   ```
+
+   Generate a PBKDF2 hash with the project's `hashPassword` util
+   (`packages/core`/`apps/api`), then log in at the storefront once it ships.
+
+## Schema & migrations workflow
+
+- Change a schema file under `packages/db/src/schema/`
+- `npm run db:generate` — emit a new migration into `packages/db/drizzle/`
+- Commit the migration; apply to remote with `npm run db:apply:remote`
 
 ## Scripts
 
 | Command | Description |
 | --- | --- |
-| `npm run dev:api` | Run the API Worker locally (`wrangler dev`, :8787) |
 | `npm run typecheck` | Typecheck all workspaces |
 | `npm run test` | Run core unit tests (vitest) |
 | `npm run lint` | Lint core |
 | `npm run build:api` | Bundle the Worker (`wrangler deploy --dry-run`) |
+| `npm run deploy:api` | Deploy the API Worker |
 | `npm run db:generate` | Generate a D1 migration from the schema |
-| `npm run db:apply` | Apply migrations to the local D1 database |
 | `npm run db:apply:remote` | Apply migrations to remote D1 |
 | `npm run db:studio` | Open drizzle-kit studio |
-| `npm run db:seed` | Seed helper (demo data ships as a migration) |
+| `npm run dev:api` | Run the Worker locally for development (`wrangler dev`) |
 
 ## API overview
 
@@ -122,15 +138,10 @@ Base path: `/api/v1` (customer + public), `/api/admin` (admin), `/media` (R2).
 
 Conventions: responses use `{ ok, data, meta? }` (`ok:false` for errors); money is in **paisa** (1 BDT = 100 paisa); order numbers are `BD-YYYYMMDD-XXXX`; review creation requires a verified purchase.
 
-## Deployment
+## CI
 
-1. Create the D1 database, KV namespace, and R2 bucket, then fill in the ids in `apps/api/wrangler.toml`.
-2. Set secrets: `wrangler secret put JWT_SECRET` (or `apps/api/.dev.vars` locally).
-3. Apply migrations remotely: `npm run db:apply:remote`.
-4. Deploy: `npm run deploy:api`.
-
-The CI workflow (`.github/workflows/ci.yml`) typechecks, lints, runs tests, and
-builds the API on push/PR.
+The workflow (`.github/workflows/ci.yml`) typechecks, lints, runs tests, and
+builds the API on every push/PR to `main`.
 
 ## License
 
