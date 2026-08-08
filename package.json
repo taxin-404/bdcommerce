@@ -28,7 +28,8 @@
     "lint": "npm run lint --workspace=@bd/core",
     "typecheck": "npm run typecheck --workspace=@bd/core && npm run typecheck --workspace=@bd/db && npm run typecheck --workspace=@bd/api && npm run typecheck --workspace=@bd/storefront && npm run typecheck --workspace=@bd/admin",
     "test": "npm run test --workspace=@bd/core",
-    "setup": "bash scripts/setup.sh"
+    "setup": "bash scripts/deploy.sh",
+    "deploy:all": "bash scripts/deploy.sh"
   },
   "engines": {
     "node": ">=20.0.0",

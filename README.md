@@ -43,7 +43,7 @@ packages/
 
 ## Quick start (Cloudflare)
 
-No local database or secrets setup needed — the Worker owns everything.
+Everything runs on Cloudflare — no local database or secrets setup needed.
 
 1. **Clone and install**
 
@@ -53,54 +53,40 @@ No local database or secrets setup needed — the Worker owns everything.
    npm install
    ```
 
-2. **Provision Cloudflare resources**
+2. **Log in to Cloudflare once**
 
    ```bash
-   cd apps/api
-   npx wrangler d1 create bdcommerce
-   npx wrangler r2 bucket create bdcommerce-media
-   npx wrangler kv namespace create bdcommerce-kv
+   npx wrangler login
    ```
 
-   Paste the returned `database_id` and KV `id` into `apps/api/wrangler.toml`.
-
-3. **Set the JWT secret**
+3. **Deploy — that's it**
 
    ```bash
-   npx wrangler secret put JWT_SECRET
+   npm run setup
    ```
 
-   (Local-only dev can put it in `apps/api/.dev.vars` instead.)
+   The script (`scripts/deploy.sh`) provisions everything against Cloudflare and
+   deploys the Worker in one pass:
 
-4. **Apply schema + seed migrations to remote D1**
+   - creates the D1 database and writes its id into `apps/api/wrangler.toml`
+   - creates the R2 media bucket and KV namespace
+   - generates a `JWT_SECRET` and stores it as a Worker secret (never in the repo)
+   - applies schema + demo seed migrations to the remote D1 database
+   - deploys the API Worker
+
+   Re-run it after code changes (`npm run deploy:all`); it's idempotent and skips
+   anything already set up.
+
+4. **Verify**
 
    ```bash
-   npm run db:apply:remote
+   curl https://bdcommerce-api.<account>.workers.dev/health
    ```
 
-   Migrations live in `packages/db/drizzle/` and ship with the repo — the schema
-   and the demo data seed (`0001_seed.sql`) are applied together. Remove the seed
-   migration before going live and seed your own data.
+5. **Create an admin**
 
-5. **Deploy**
-
-   ```bash
-   npm run deploy:api
-   ```
-
-   Verify: `curl https://<your-worker>.workers.dev/health`.
-
-6. **Create an admin**
-
-   Seed an initial `ADMIN` user in remote D1:
-
-   ```bash
-   npx wrangler d1 execute bdcommerce --remote \
-     --command "INSERT INTO users (id, email, name, password_hash, role, is_active, created_at, updated_at) VALUES ('...', 'you@example.com', 'Admin', '...pbkdf2 hash...', 'ADMIN', 1, ...);"
-   ```
-
-   Generate a PBKDF2 hash with the project's `hashPassword` util
-   (`packages/core`/`apps/api`), then log in at the storefront once it ships.
+   Seed an initial `ADMIN` user into remote D1 with a PBKDF2 hash generated via
+   the project's `hashPassword` util, then log in at the storefront once it ships.
 
 ## Schema & migrations workflow
 
@@ -116,7 +102,9 @@ No local database or secrets setup needed — the Worker owns everything.
 | `npm run test` | Run core unit tests (vitest) |
 | `npm run lint` | Lint core |
 | `npm run build:api` | Bundle the Worker (`wrangler deploy --dry-run`) |
-| `npm run deploy:api` | Deploy the API Worker |
+| `npm run setup` | Provision D1/R2/KV + secrets, migrate, and deploy (one-shot) |
+| `npm run deploy:all` | Re-run the one-shot deploy (idempotent) |
+| `npm run deploy:api` | Deploy the API Worker only |
 | `npm run db:generate` | Generate a D1 migration from the schema |
 | `npm run db:apply:remote` | Apply migrations to remote D1 |
 | `npm run db:studio` | Open drizzle-kit studio |
