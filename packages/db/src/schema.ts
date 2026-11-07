@@ -131,10 +131,24 @@ export const payments = sqliteTable("payments", {
   provider: text("provider", { enum: PAYMENT_METHODS }).notNull(),
   amount: integer("amount").notNull(),
   status: text("status", { enum: PAYMENT_STATUSES }).notNull().default("unpaid"),
-  providerRef: text("provider_ref"),
+  providerRef: text("provider_ref"),   // gateway payment id (bKash paymentID)
+  transactionId: text("transaction_id"), // gateway transaction id (bKash trxID), set when paid
   raw: text("raw", { mode: "json" }),
   createdAt: createdAt(),
-}, (t) => [index("payments_order").on(t.orderId)]);
+}, (t) => [
+  index("payments_order").on(t.orderId),
+  uniqueIndex("payments_ref").on(t.storeId, t.provider, t.providerRef), // also stops a manual TrxID being reused
+]);
+
+// Gateway credentials per store. ciphertext = AES-GCM(JSON), key from the CREDENTIALS_KEY Worker secret,
+// bound to "<storeId>:<provider>" as AAD. Never store or log plaintext secrets.
+export const storePaymentCredentials = sqliteTable("store_payment_credentials", {
+  id: text("id").primaryKey(),
+  storeId: text("store_id").notNull().references(() => stores.id),
+  provider: text("provider", { enum: PAYMENT_METHODS }).notNull(),
+  ciphertext: text("ciphertext").notNull(),
+  updatedAt: updatedAt(),
+}, (t) => [uniqueIndex("creds_store_provider").on(t.storeId, t.provider)]);
 
 // COD fraud protection: phones that may not place orders
 export const blockedPhones = sqliteTable("blocked_phones", {

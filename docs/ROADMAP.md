@@ -6,6 +6,8 @@
 - [x] API: catalog, guest COD checkout, tracking, admin products/orders/blocklist
 - [x] Payment + courier adapter interfaces (COD implemented)
 - [x] Local smoke test (totals, validation, stock, restock on cancel, admin auth)
+- [x] Manual wallet payments (bKash/Nagad/Rocket send-money + TrxID, admin confirm/reject), tested locally end to end
+- [x] bKash gateway, dormant (needs a merchant account; tested against local mock only): per-store encrypted credentials, callback, verify-payment, checkout reordered (order first, gateway second)
 
 ## Next (in order)
 1. **Fix stock oversell race** (see DECISIONS known issue 1) + add automated API tests (vitest + `@cloudflare/vitest-pool-workers` or miniflare).
@@ -15,7 +17,8 @@
 4. **Real auth:** staff accounts + roles + sessions (D13). Replace the single token.
 5. **Admin UI (React + Vite + Tailwind + shadcn/ui):** login, products (with variants), orders (status flow, courier/tracking), customers, store settings/theme.
 6. **Storefront (Astro):** home, category, product, cart, checkout (COD), order tracking; Bangla/English; mobile-first; per-store theme from `/api/store`.
-7. **bKash + SSLCommerz** payment adapters (sandbox first), webhook verification, reorder checkout flow (known issue 4).
+6b. **Manual payment follow-ups:** cron to auto-cancel unpaid manual orders after N hours (releases stock), admin reminder list, optional SMS to customer on confirm/reject, optional per-wallet QR image + instructions in R2, flag customers with repeated rejected TrxIDs (feeds COD fraud v2).
+7. **bKash gateway hardening (ONLY if the owner later gets a merchant account):** run the real bKash sandbox with merchant credentials, confirm API version (v1.2.0-beta vs v2), get the callback domain approved, add a cron that re-verifies/cancels stale pending bKash orders (e.g. >30 min) to release stock, add refunds. SSLCommerz/Nagad only after the owner asks.
 8. **Courier integrations:** Steadfast and Pathao first (create parcel from admin, store tracking code, status webhooks/polling).
 9. **SMS notifications** (order placed/confirmed/shipped) + email via Resend/Brevo.
 10. **COD fraud protection v2:** auto-flag by return history, risky-order rules, rate limits.

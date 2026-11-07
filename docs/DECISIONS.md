@@ -55,13 +55,54 @@ Format: decision, why, rejected alternatives, and when to revisit.
 - Prices and stock are re-read server-side. Order numbers are per-store, from an atomic counter on `stores`.
 - Order tracking requires order number AND the phone used, so it works without login.
 
-## D9. Payments: adapter pattern; COD now, bKash + SSLCommerz next
-- **Why:** bKash/Nagad are the main wallets; SSLCommerz or aamarPay aggregate cards/wallets/banking in one integration.
-- **Stripe is intentionally not used:** it generally isn't available for Bangladesh-based businesses. Re-check
-  each gateway's current merchant requirements and fees before building.
-- Online payment flow to implement: create order (unpaid) -> provider.init() returns redirectUrl -> user pays ->
-  provider webhook/callback -> verify with provider server-side -> mark paid. Never mark paid from the browser redirect.
-- Currently `POST /api/orders` rejects non-COD methods with 501 because providers are stubs.
+## D9. Payments: adapter pattern; COD + manual wallet payment now, bKash gateway ready but dormant (owner decision)
+- **Owner constraint:** the owner CANNOT get a bKash merchant account (bKash's online-business application asks for an NID,
+  valid trade license, bank account and website; aggregators like ShurjoPay also ask for trade license/TIN/business bank account).
+  So the live launch methods are **COD** and **manual wallet payment**. Do not build other gateways until asked.
+- **Manual wallet payment (`paymentMethod: "manual"`)**: the store saves its own bKash/Nagad/Rocket number(s) (personal or agent
+  accounts work; no API, no merchant account) via `PUT /api/admin/payment-settings/manual`. Checkout shows the numbers
+  (`GET /api/store` -> `manualPayment`), the customer sends money, then submits wallet + sender number + TrxID.
+  Order is created `pending/unpaid` with stock reserved and `awaitingVerification: true`. The admin opens the order
+  (`GET /api/admin/orders/:id` shows TrxID, wallet, sender), checks the wallet app for a matching TrxID AND amount, then calls
+  `POST /api/admin/orders/:id/confirm-payment` (marks paid, order -> confirmed) or `.../reject-payment` (cancels, releases stock).
+  Filter the queue with `GET /api/admin/orders?paymentStatus=unpaid`.
+- **Manual payment anti-abuse rules (do not weaken):** TrxIDs are normalized to uppercase and are UNIQUE per store (DB unique index
+  `payments_ref` + app check), so one real TrxID cannot pay for two orders; the wallet must be one the store configured;
+  nothing is ever marked paid automatically; confirm/reject are admin-only and idempotent; rejected/cancelled orders release stock.
+- **Manual payment risks:** it is human-verified, so it only scales to modest order volume; fake TrxIDs are possible (admin must
+  actually check the wallet); unpaid manual orders hold stock until confirmed/rejected (needs an expiry cron, see roadmap);
+  partial/incorrect amounts must be caught by the admin; **check bKash/Nagad/Rocket's current rules on using personal accounts for
+  business payments** (accounts used heavily for commerce can be restricted). Moving to a merchant account or aggregator later is the fix.
+- **Launch methods per store:** `GET /api/store` returns `paymentMethods`: `cod` always, `manual` if the store saved wallet numbers,
+  `bkash` only if the store saved gateway credentials. The storefront must render only those. Other gateways (SSLCommerz, Nagad API) return 501.
+- **Why COD + manual:** COD is dominant in BD ecommerce and is how most small shops without merchant accounts also take wallet money.
+  Stripe is intentionally not used (generally unavailable for BD businesses).
+- **bKash gateway integration (DORMANT until the owner has a merchant account; code kept so it is a credentials-only switch)** (`packages/payments/src/bkash.ts`): Tokenized Checkout one-shot flow:
+  grant token (cached in KV ~1h) -> create payment -> redirect customer to `bkashURL` -> bKash redirects the browser to
+  `GET /api/payments/bkash/callback` -> server executes the payment -> if execute is not `Completed` it queries payment status.
+- **Money safety rules (do not weaken):**
+  1. The callback query string is untrusted. Paid is decided only by a server-to-server execute/status call that returns
+     `statusCode 0000` + `transactionStatus Completed` AND an amount equal to OUR order total AND a `trxID`.
+  2. Execute errors/timeouts never mean "failed": always follow with a status query (a timed-out execute may have taken the money).
+  3. The callback is idempotent (bKash may call twice); a paid payment is never executed again.
+  4. If the customer cancels/fails, the order is cancelled and its reserved stock is released (`failOnlineOrder`).
+  5. If the result is unclear the order stays `pending/unpaid` and stock stays reserved; an admin (or a future cron) calls
+     `POST /api/admin/orders/:id/verify-payment` to re-check with bKash.
+- **Checkout order of operations (fixes old known issue 4):** insert order + unpaid payment row FIRST (stock reserved),
+  THEN call the gateway. If gateway init fails the order is cancelled and stock released, and the API returns 502.
+- **Credentials:** per store, AES-GCM encrypted in `store_payment_credentials` using the `CREDENTIALS_KEY` Worker secret
+  (base64 32 bytes), bound to `<storeId>:<provider>` as AAD. Never returned by any endpoint, never logged.
+  Set via `PUT /api/admin/payment-settings/bkash`. The bKash base URL is NOT user-configurable (SSRF/credential-exfiltration risk);
+  only the operator env var `BKASH_BASE_URL_OVERRIDE` (local mock testing) can change it. **Never set it in production.**
+- **Storefront redirect after payment:** `stores.settings.storefrontUrl` + `/order/<number>?payment=paid|failed|cancelled|pending`.
+  Without it the callback returns JSON.
+- **!! API version caveat:** implemented against bKash's widely documented `v1.2.0-beta` tokenized endpoints
+  (`/checkout/token/grant|create|execute|payment/status`, headers `authorization: <id_token>` + `x-app-key`, grant uses
+  `username`/`password` headers). bKash also has a newer "v2" API (`/v2/tokenized-checkout/...`). It has been tested ONLY against
+  `scripts/mock-bkash.mjs`, never real bKash. Before going live: run the bKash sandbox flow with the merchant's sandbox credentials,
+  compare with developer.bka.sh for the merchant's assigned API version, and have bKash approve the callback domain. Only
+  `bkash.ts` should need to change if the version differs.
+- **Not built:** refunds, agreements/one-click payments, bKash webhook/IPN, automatic reconciliation cron for stuck pending orders.
 
 ## D10. Couriers: adapter pattern
 - Pathao, Steadfast, RedX, Paperfly are the common BD couriers. Interface lives in `packages/couriers`.
@@ -108,10 +149,10 @@ Format: decision, why, rejected alternatives, and when to revisit.
 1. **Stock race condition:** checkout checks stock, then decrements in a later batch. Two simultaneous orders for the
    last unit can oversell. Fix: make the decrement conditional (`WHERE stock >= qty`) and abort/roll back if 0 rows changed
    (D1 batch is atomic, use a check statement), or reserve stock via a Durable Object.
-2. **Order number gaps:** the counter increments before the order insert; if the insert fails, a number is skipped. Harmless but visible.
+2. **Order number gaps:** the counter increments before the order insert, and orders whose online payment fails are cancelled but keep their number. Harmless but visible.
+   Also: abandoned bKash checkouts (customer closes the tab) stay `pending` and hold stock until verified/cancelled; a cleanup cron is needed.
 3. **No rate limiting** on `POST /api/orders` (spam/fake COD orders). Add Cloudflare WAF rate-limit rule and per-phone limits.
-4. **Provider init runs before the order is inserted**, which is fine for COD but wrong for online payments; reorder
-   when implementing real gateways (insert unpaid order first, then init).
+4. ~~Provider init ran before the order insert~~ FIXED: order is inserted first, gateway init second (see D9).
 5. **Only BDT, one language per field, no discounts/coupons, no taxes/VAT, no refunds flow.**
 6. Admin has no audit log and no pagination totals.
 7. `LIKE '%q%'` search is a full scan of the store's products; fine for small catalogs, replace with FTS5 when catalogs grow (D1 row-read limit).

@@ -13,10 +13,10 @@ entirely on Cloudflare's free tier**. One codebase must work for any type of bus
 Backend base is built and smoke-tested locally (wrangler dev + local D1):
 - `packages/shared`   zod schemas, constants, BD divisions/districts, helpers
 - `packages/db`       Drizzle schema + generated migration (`migrations/`)
-- `packages/payments` payment adapters (COD works; bKash, SSLCommerz are stubs)
+- `packages/payments` payment adapters. **Live methods: COD and manual wallet payment (bKash/Nagad/Rocket send-money + TrxID, admin verifies). The owner has NO bKash merchant account.** The bKash gateway code is dormant and only tested against `scripts/mock-bkash.mjs`. Do not add other gateways until asked (see DECISIONS D9)
 - `packages/couriers` courier adapters (Steadfast, Pathao are stubs)
 - `apps/api`          Hono Worker: catalog, guest checkout, order tracking, admin routes
-NOT built: storefront (Astro), admin UI (React), real payments, courier booking, SMS, image upload, real admin login.
+NOT built: storefront (Astro), admin UI (React), courier booking, SMS, image upload, real admin login, cron jobs (stale unpaid orders), bKash gateway refunds.
 
 ## Commands
 ```
@@ -26,6 +26,7 @@ npm run db:migrate:local
 node scripts/seed.mjs demo # prints admin token; then: npm run seed:local
 npm run dev:api            # http://localhost:8787, send  -H "x-store-slug: demo"
 npm run typecheck          # must pass before you finish any task
+node scripts/mock-bkash.mjs   # local fake bKash on :9999; copy apps/api/.dev.vars.example to .dev.vars and set BKASH_BASE_URL_OVERRIDE
 ```
 
 ## Hard rules (violating these breaks the product)
@@ -39,7 +40,9 @@ npm run typecheck          # must pass before you finish any task
    `CourierProvider` in `packages/couriers`. Do not hardcode providers in routes.
 6. **Validate all input with zod from `packages/shared`.** Share schemas between API and frontends.
 7. **Schema changes go through `drizzle-kit generate`**, then apply with wrangler. Keep migrations forward-only.
-8. **No secrets in the repo.** Use `wrangler secret put` and `.dev.vars` (gitignored).
+8. **No secrets in the repo.** Use `wrangler secret put` and `.dev.vars` (gitignored). Gateway credentials are stored only AES-GCM encrypted (D9); never log or return them.
+   Never mark a manual payment paid without an admin action; TrxIDs must stay unique per store.
+   Never trust payment callback query params; mark paid only after server-to-server verification with an exact amount match (D9).
 9. Keep it TypeScript, keep dependencies minimal (bundle size and CPU matter).
 10. Verify your work: run `npm run typecheck`, and for API changes, run `wrangler dev` and curl the endpoints.
 

@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local dev. In production use: wrangler secret put CREDENTIALS_KEY
+CREDENTIALS_KEY=generate-with-openssl-rand-base64-32
+# Local mock only (node scripts/mock-bkash.mjs). Never set in production.
+# BKASH_BASE_URL_OVERRIDE=http://localhost:9999/v1.2.0-beta/tokenized
