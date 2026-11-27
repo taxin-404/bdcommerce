@@ -1,0 +1,211 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { resolveAdminLocale } from '../../../lib/admin-locale';
+import { t } from '../../../lib/i18n';
+import { imageUrl } from '../../../lib/image';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('admin_locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+
+const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
+const statusParam = Astro.url.searchParams.get('status') ?? '';
+const status = ['draft', 'active', 'archived'].includes(statusParam) ? statusParam : '';
+
+const where: string[] = [];
+const bindings: unknown[] = [];
+if (status) {
+  where.push('p.status = ?');
+  bindings.push(status);
+}
+if (q) {
+  where.push('(p.title LIKE ? OR p.title_bn LIKE ? OR p.slug LIKE ?)');
+  const like = `%${q}%`;
+  bindings.push(like, like, like);
+}
+
+const { results: products } = await env.DB.prepare(
+  `SELECT p.id, p.slug, p.title, p.title_bn, p.price, p.status, p.featured, p.updated_at,
+          c.name AS category_name,
+          (SELECT i.r2_key FROM product_images i
+            WHERE i.product_id = p.id ORDER BY i.sort, i.id LIMIT 1) AS image_key
+     FROM products p
+     LEFT JOIN categories c ON c.id = p.category_id
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+    ORDER BY p.updated_at DESC, p.id DESC
+    LIMIT 100`,
+)
+  .bind(...bindings)
+  .all<{
+    id: number;
+    slug: string;
+    title: string;
+    title_bn: string | null;
+    price: number;
+    status: string;
+    featured: number;
+    updated_at: string;
+    category_name: string | null;
+    image_key: string | null;
+  }>();
+---
+
+<AdminLayout title={t(locale, 'admin.products')} locale={locale} current="products">
+  <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-semibold">{t(locale, 'admin.products')}</h1>
+    <a
+      href="/admin/products/new"
+      class="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+    >
+      {t(locale, 'admin.product.new')}
+    </a>
+  </div>
+
+  <form method="get" class="mb-4 flex flex-wrap gap-2" data-delete-confirm={t(locale, 'admin.product.deleteConfirm')}>
+    <input
+      type="search"
+      name="q"
+      value={q}
+      placeholder={t(locale, 'admin.product.search')}
+      class="min-w-48 flex-1 rounded border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+    />
+    <select
+      name="status"
+      class="rounded border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+    >
+      <option value="">{t(locale, 'admin.product.all')}</option>
+      <option value="draft" selected={status === 'draft'}>{t(locale, 'admin.product.draft')}</option>
+      <option value="active" selected={status === 'active'}>{t(locale, 'admin.product.active')}</option>
+      <option value="archived" selected={status === 'archived'}>{t(locale, 'admin.product.archived')}</option>
+    </select>
+    <button type="submit" class="rounded border border-slate-300 bg-white px-4 py-2 text-sm hover:bg-slate-50">
+      {t(locale, 'admin.product.filter')}
+    </button>
+  </form>
+
+  <section class="overflow-hidden rounded-xl bg-white shadow-sm">
+    <table class="w-full text-left text-sm">
+      <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+        <tr>
+          <th class="px-4 py-3">{t(locale, 'admin.product.title')}</th>
+          <th class="px-4 py-3">{t(locale, 'admin.product.category')}</th>
+          <th class="px-4 py-3">{t(locale, 'admin.product.price')}</th>
+          <th class="px-4 py-3">{t(locale, 'admin.product.status')}</th>
+          <th class="px-4 py-3">{t(locale, 'admin.category.actions')}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {
+          products.length === 0 ? (
+            <tr>
+              <td colspan="5" class="px-4 py-6 text-center text-slate-500">
+                {t(locale, 'admin.product.empty')}
+              </td>
+            </tr>
+          ) : (
+            products.map((product) => (
+              <tr>
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-3">
+                    {product.image_key ? (
+                      <img
+                        src={imageUrl(product.image_key, 'thumb', env.R2_PUBLIC_URL ?? '')}
+                        alt=""
+                        width="40"
+                        height="40"
+                        loading="lazy"
+                        class="size-10 rounded object-cover"
+                      />
+                    ) : (
+                      <span class="flex size-10 items-center justify-center rounded bg-slate-100 text-xs text-slate-400">
+                        —
+                      </span>
+                    )}
+                    <div>
+                      <a href={`/admin/products/${product.id}`} class="font-medium hover:text-teal-700">
+                        {product.title}
+                      </a>
+                      {product.title_bn && (
+                        <span class="block text-xs text-slate-500">{product.title_bn}</span>
+                      )}
+                      {product.featured === 1 && (
+                        <span class="text-xs text-amber-600">★ {t(locale, 'admin.product.featured')}</span>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td class="px-4 py-3 text-slate-600">
+                  {product.category_name ?? t(locale, 'admin.product.noCategory')}
+                </td>
+                <td class="px-4 py-3">৳{product.price}</td>
+                <td class="px-4 py-3">
+                  <span
+                    class:list={[
+                      'rounded-full px-2 py-0.5 text-xs font-medium',
+                      product.status === 'active'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : product.status === 'draft'
+                          ? 'bg-slate-100 text-slate-600'
+                          : 'bg-amber-100 text-amber-800',
+                    ]}
+                  >
+                    {t(locale, `admin.product.${product.status}`)}
+                  </span>
+                </td>
+                <td class="px-4 py-3">
+                  <div class="flex gap-2">
+                    <a
+                      href={`/admin/products/${product.id}`}
+                      class="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                    >
+                      {t(locale, 'admin.category.edit')}
+                    </a>
+                    <button
+                      type="button"
+                      class="js-delete rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                      data-id={product.id}
+                    >
+                      {t(locale, 'admin.category.delete')}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))
+          )
+        }
+      </tbody>
+    </table>
+  </section>
+</AdminLayout>
+
+<script>
+  const filterForm = document.querySelector<HTMLFormElement>('form[method="get"]');
+
+  document.querySelectorAll<HTMLButtonElement>('.js-delete').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!window.confirm(filterForm?.dataset.deleteConfirm ?? '')) return;
+
+      const response = await fetch(`/api/admin/products/${button.dataset.id}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        window.alert(data?.error?.message ?? '');
+        return;
+      }
+
+      window.location.reload();
+    });
+  });
+</script>

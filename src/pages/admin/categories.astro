@@ -1,0 +1,307 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { resolveAdminLocale } from '../../lib/admin-locale';
+import { t } from '../../lib/i18n';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('admin_locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+
+const { results: rows } = await env.DB.prepare(
+  `SELECT c.id, c.slug, c.name, c.name_bn, c.parent_id, c.sort, c.active,
+          (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id) AS product_count
+     FROM categories c
+    ORDER BY c.sort, c.id`,
+).all<{
+  id: number;
+  slug: string;
+  name: string;
+  name_bn: string | null;
+  parent_id: number | null;
+  sort: number;
+  active: number;
+  product_count: number;
+}>();
+
+const categories = rows.map((row) => ({ ...row, active: row.active === 1 }));
+const nameById = new Map(categories.map((category) => [category.id, category.name]));
+---
+
+<AdminLayout title={t(locale, 'admin.categories')} locale={locale} current="categories">
+  <div class="mb-6 flex items-center justify-between">
+    <h1 class="text-2xl font-semibold">{t(locale, 'admin.categories')}</h1>
+    <span class="text-sm text-slate-500">{categories.length}</span>
+  </div>
+
+  <section class="mb-8 rounded-xl bg-white p-5 shadow-sm">
+    <h2 id="form-title" class="mb-4 text-lg font-medium">{t(locale, 'admin.category.new')}</h2>
+
+    <form
+      id="category-form"
+      class="grid gap-4 sm:grid-cols-2"
+      data-save-failed={t(locale, 'admin.category.saveFailed')}
+      data-delete-failed={t(locale, 'admin.category.deleteFailed')}
+      data-delete-confirm={t(locale, 'admin.category.deleteConfirm')}
+      data-new-label={t(locale, 'admin.category.new')}
+    >
+      <input type="hidden" name="id" value="" />
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.category.name')}</span>
+        <input
+          name="name"
+          required
+          maxlength="120"
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        />
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.category.nameBn')}</span>
+        <input
+          name="name_bn"
+          maxlength="120"
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        />
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.category.slug')}</span>
+        <input
+          name="slug"
+          maxlength="80"
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        />
+        <span class="mt-1 block text-xs text-slate-500">{t(locale, 'admin.category.slugHint')}</span>
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.category.parent')}</span>
+        <select
+          name="parent_id"
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        >
+          <option value="">{t(locale, 'admin.category.none')}</option>
+          {
+            categories.map((category) => (
+              <option value={category.id}>{category.name}</option>
+            ))
+          }
+        </select>
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.category.sort')}</span>
+        <input
+          name="sort"
+          type="number"
+          min="0"
+          max="9999"
+          value="0"
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        />
+      </label>
+
+      <label class="flex items-center gap-2 pt-6 text-sm">
+        <input name="active" type="checkbox" checked class="size-4 rounded border-slate-300" />
+        <span class="font-medium">{t(locale, 'admin.category.active')}</span>
+      </label>
+
+      <div class="flex gap-3 sm:col-span-2">
+        <button
+          type="submit"
+          class="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+        >
+          {t(locale, 'common.save')}
+        </button>
+        <button
+          id="category-reset"
+          type="button"
+          class="rounded border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+        >
+          {t(locale, 'common.cancel')}
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <section class="overflow-hidden rounded-xl bg-white shadow-sm">
+    <table class="w-full text-left text-sm">
+      <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+        <tr>
+          <th class="px-4 py-3">{t(locale, 'admin.category.name')}</th>
+          <th class="px-4 py-3">{t(locale, 'admin.category.parent')}</th>
+          <th class="px-4 py-3">{t(locale, 'admin.category.productCount')}</th>
+          <th class="px-4 py-3">{t(locale, 'admin.category.sort')}</th>
+          <th class="px-4 py-3">{t(locale, 'admin.category.actions')}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {
+          categories.length === 0 ? (
+            <tr>
+              <td colspan="5" class="px-4 py-6 text-center text-slate-500">
+                {t(locale, 'admin.category.empty')}
+              </td>
+            </tr>
+          ) : (
+            categories.map((category) => (
+              <tr class:list={[!category.active && 'text-slate-400']}>
+                <td class="px-4 py-3">
+                  <span class="font-medium">{category.name}</span>
+                  {category.name_bn && (
+                    <span class="block text-xs text-slate-500">{category.name_bn}</span>
+                  )}
+                  <span class="block font-mono text-xs text-slate-400">{category.slug}</span>
+                </td>
+                <td class="px-4 py-3">
+                  {category.parent_id ? (nameById.get(category.parent_id) ?? '—') : '—'}
+                </td>
+                <td class="px-4 py-3">{category.product_count}</td>
+                <td class="px-4 py-3">{category.sort}</td>
+                <td class="px-4 py-3">
+                  <div class="flex gap-2">
+                    <button
+                      type="button"
+                      class="js-edit rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                      data-id={category.id}
+                      data-name={category.name}
+                      data-name-bn={category.name_bn ?? ''}
+                      data-slug={category.slug}
+                      data-parent={category.parent_id ?? ''}
+                      data-sort={category.sort}
+                      data-active={category.active ? '1' : '0'}
+                    >
+                      {t(locale, 'admin.category.edit')}
+                    </button>
+                    <button
+                      type="button"
+                      class="js-delete rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                      data-id={category.id}
+                    >
+                      {t(locale, 'admin.category.delete')}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))
+          )
+        }
+      </tbody>
+    </table>
+  </section>
+</AdminLayout>
+
+<script>
+  const form = document.getElementById('category-form') as HTMLFormElement | null;
+  const title = document.getElementById('form-title');
+  const reset = document.getElementById('category-reset');
+
+  function resetForm() {
+    form?.reset();
+    const id = form?.elements.namedItem('id') as HTMLInputElement | null;
+    if (id) id.value = '';
+    if (title) title.textContent = form?.dataset.newLabel ?? title.textContent;
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  function payload() {
+    if (!form) return null;
+    const data = new FormData(form);
+    const id = String(data.get('id') ?? '');
+    const parent = String(data.get('parent_id') ?? '');
+    const body = {
+      name: String(data.get('name') ?? ''),
+      name_bn: String(data.get('name_bn') ?? '').trim() || null,
+      slug: String(data.get('slug') ?? '').trim(),
+      parent_id: parent ? Number(parent) : null,
+      sort: Number(data.get('sort') ?? 0),
+      active: data.get('active') === 'on',
+    };
+    return { id, body };
+  }
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const current = payload();
+    if (!current || !form) return;
+
+    const button = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+    if (button) button.disabled = true;
+
+    try {
+      const response = await fetch(
+        current.id ? `/api/admin/categories/${current.id}` : '/api/admin/categories',
+        {
+          method: current.id ? 'PATCH' : 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(current.body),
+        },
+      );
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        window.alert(data?.error?.message ?? form.dataset.saveFailed ?? '');
+        return;
+      }
+
+      window.location.reload();
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+
+  reset?.addEventListener('click', resetForm);
+
+  document.querySelectorAll<HTMLButtonElement>('.js-edit').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (!form) return;
+      const data = button.dataset;
+      const set = (name: string, value: string) => {
+        const field = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
+        if (field) field.value = value;
+      };
+      set('id', data.id ?? '');
+      set('name', data.name ?? '');
+      set('name_bn', data.nameBn ?? '');
+      set('slug', data.slug ?? '');
+      set('parent_id', data.parent ?? '');
+      set('sort', data.sort ?? '0');
+      const active = form.elements.namedItem('active') as HTMLInputElement | null;
+      if (active) active.checked = data.active === '1';
+      if (title) title.textContent = data.name ?? '';
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.js-delete').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!form || !window.confirm(form.dataset.deleteConfirm ?? '')) return;
+
+      const response = await fetch(`/api/admin/categories/${button.dataset.id}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        window.alert(data?.error?.message ?? form.dataset.deleteFailed ?? '');
+        return;
+      }
+
+      window.location.reload();
+    });
+  });
+</script>

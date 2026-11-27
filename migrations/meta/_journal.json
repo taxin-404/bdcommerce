@@ -15,6 +15,13 @@
       "when": 1795756563412,
       "tag": "0001_products_status_id",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795761606493,
+      "tag": "0002_login_attempts",
+      "breakpoints": true
     }
   ]
 }

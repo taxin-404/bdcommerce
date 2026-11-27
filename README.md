@@ -5,7 +5,7 @@
 A free-tier, config-driven e-commerce template for small Bangladeshi businesses.
 Built with Astro SSR, Hono, D1, and R2 on Cloudflare Workers.
 
-**Status:** Phase 1 — database schema, config, and demo seed.
+**Status:** Phase 2 — admin auth, category/product management, and R2 images.
 
 ## One-click deploy
 
@@ -42,6 +42,29 @@ settings, coupons, and the blocklist are left untouched.
 
 Copy `.dev.vars.example` to `.dev.vars` when you need local secrets. Never commit
 `.dev.vars`.
+
+## Admin
+
+Open <http://localhost:4321/admin/login> and sign in with `ADMIN_PASSPHRASE`.
+The first login creates a random `session_salt` row in the D1 `settings` table;
+the httpOnly `SameSite=Lax` session cookie is HMAC-signed with a key derived
+from the passphrase via HKDF-SHA256 and lasts 7 days. Five failed attempts per
+15 minutes from one IP are rejected. The admin UI is available in Bangla and
+English and is designed for phones as well as desktops.
+
+From the admin you can create categories, create and edit products with
+variants, and upload images. Uploads are resized in the browser to 400, 800, and
+1600 px WebP (quality 0.8); the Worker validates the WebP header and a 1 MB
+per-file limit, then stores three objects under
+`products/{productId}/{uuid}-{thumb|md|full}.webp`.
+
+### Serving images
+
+Images load from `R2_PUBLIC_URL` when it is set (a public R2 bucket or custom
+domain). When it is empty, the `/img/*` Worker route streams the same objects
+with `Cache-Control: public, max-age=31536000, immutable` and the admin shows a
+banner recommending public R2 access. Serving straight from R2 keeps image
+traffic off the Worker request budget.
 
 ## Scripts
 
