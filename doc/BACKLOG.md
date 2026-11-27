@@ -14,6 +14,7 @@ At the end of every phase, the agent appends its deferred items here. When an it
 - The cart does not show free-shipping progress; add a hint when `freeShippingOver` is configured.
 
 ## Phase 7 (courier and fraud controls)
+- No per-phone or per-IP order limits and Turnstile is off by default, so fake COD orders can drain tracked stock. Do not launch a real shop before this is done.
 - Order rate limits per phone/IP and blocklist enforcement are not wired into checkout yet (`ip_hash` stays NULL).
 - `/track` has no rate limit. Add one so order-number guesses are throttled.
 - Turnstile verification currently trusts `cf-connecting-ip` when present; review the proxy/IP handling during the fraud-control pass.
@@ -29,7 +30,7 @@ At the end of every phase, the agent appends its deferred items here. When an it
 - If the Turnstile widget script cannot load, the submit button stays blocked. Add a friendly retry/fallback path.
 - The mini-cart and track result lack a dedicated live region; review with the accessibility pass.
 - Mini-cart titles are stored at add time, so switching language leaves old-language titles until the cart page re-prices.
-- Confirmation is a one-time POST form; refreshing shows a resubmit warning. Move to a short-lived signed view cookie/token or a 303 redirect in Phase 8.
+- Order confirmation loads via POST, so refreshing shows a 'resubmit form' warning. Find a way to keep the phone number out of the URL without the warning (for example a short-lived signed token).
 
 ## Phase 9 (caching, resilience)
 - The language cookie MUST be part of the cache key, otherwise a Bangla page can be served to an English visitor.
