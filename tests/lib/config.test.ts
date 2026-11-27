@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import defaultConfig from '../../site.config';
 import { loadConfig, mergeConfig } from '../../src/lib/config';
 
@@ -42,6 +42,14 @@ describe('mergeConfig', () => {
 });
 
 describe('loadConfig', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('merges settings rows over the defaults', async () => {
     const config = await loadConfig(
       fakeDb([{ key: 'theme', value: '{"primary":"#123456"}' }]),
@@ -51,9 +59,41 @@ describe('loadConfig', () => {
     expect(config.theme.accent).toBe(defaultConfig.theme.accent);
   });
 
-  it('rejects malformed settings JSON', async () => {
-    await expect(loadConfig(fakeDb([{ key: 'theme', value: '{' }]))).rejects.toThrow(
-      'Invalid JSON in settings key "theme"',
+  it('returns defaults when the settings table is empty', async () => {
+    const config = await loadConfig(fakeDb([]));
+
+    expect(config).toEqual(defaultConfig);
+  });
+
+  it('falls back to defaults for malformed settings JSON', async () => {
+    const config = await loadConfig(fakeDb([{ key: 'theme', value: '{' }]));
+
+    expect(config.theme.primary).toBe(defaultConfig.theme.primary);
+  });
+
+  it('ignores settings rows that are not config sections', async () => {
+    const config = await loadConfig(
+      fakeDb([{ key: 'home_sections', value: '["hero","featured"]' }]),
     );
+
+    expect(config).toEqual(defaultConfig);
+  });
+
+  it('ignores settings rows that fail schema validation', async () => {
+    const config = await loadConfig(fakeDb([{ key: 'theme', value: '{"primary":123}' }]));
+
+    expect(config.theme.primary).toBe(defaultConfig.theme.primary);
+  });
+
+  it('applies valid rows and skips invalid ones', async () => {
+    const config = await loadConfig(
+      fakeDb([
+        { key: 'theme', value: '{"primary":"#123456"}' },
+        { key: 'shipping', value: '{"zones":[]}' },
+      ]),
+    );
+
+    expect(config.theme.primary).toBe('#123456');
+    expect(config.shipping.zones).toEqual(defaultConfig.shipping.zones);
   });
 });

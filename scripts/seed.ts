@@ -249,7 +249,9 @@ try {
     stdio: ['ignore', 'ignore', 'inherit'],
   });
 
-  console.log('Seed complete. Re-run pnpm db:seed to reset the demo catalog.');
+  console.log(
+    'Seed complete. Re-run pnpm db:seed to replace all local catalog rows with the demo catalog.',
+  );
 } catch {
   console.error('\nSeed failed. Make sure the local schema exists: pnpm db:migrate:local');
   process.exitCode = 1;

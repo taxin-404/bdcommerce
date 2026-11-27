@@ -36,7 +36,8 @@ D1 and R2 are emulated. The home page runs `SELECT 1` against the local D1 bindi
 
 `pnpm db:seed` loads a demo catalog for three business types: clothing with
 size/colour variants, food with weight options, and electronics with spec
-attributes. It only targets local D1 and resets the demo catalog; orders,
+attributes. It only targets local D1. It deletes all local catalog rows
+(products, variants, images, and categories) and reloads the demo data; orders,
 settings, coupons, and the blocklist are left untouched.
 
 Copy `.dev.vars.example` to `.dev.vars` when you need local secrets. Never commit
@@ -77,22 +78,26 @@ ID-free bindings and Wrangler will find the resources by name on later deploys.
 
 ## Secrets
 
-Only `ADMIN_PASSPHRASE` is required for the current phase. Set it in production
-with Wrangler, and copy `.dev.vars.example` to `.dev.vars` for local use:
+`ADMIN_PASSPHRASE` is required. Set it in production with Wrangler, and copy
+`.dev.vars.example` to `.dev.vars` for local use:
 
 ```bash
 pnpm exec wrangler secret put ADMIN_PASSPHRASE
 ```
 
-The admin session signing key will be derived from the passphrase later, so there
-is no separate `SESSION_SECRET`.
+From Phase 2, admin session cookies are signed with a key derived from
+`ADMIN_PASSPHRASE` via HKDF-SHA256 plus a random per-install salt stored in the
+D1 `settings` table. There is no separate `SESSION_SECRET`, so a one-click
+deploy still needs only one secret.
 
 ## Configuration
 
 Edit `site.config.ts` for the shop name, theme, delivery zones, payment numbers,
 social links, and feature flags. Runtime overrides live in the D1 `settings`
 table (JSON values keyed by config section) and are merged over these defaults by
-`loadConfig()`; the admin screens that write them arrive in later phases.
+`loadConfig()`; the admin screens that write them arrive in later phases. Only
+known config section keys are merged. Unknown rows are ignored, and invalid rows
+are skipped with a warning, so one bad setting cannot take the site down.
 
 ## Free-tier notes
 

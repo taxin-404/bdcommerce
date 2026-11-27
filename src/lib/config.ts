@@ -98,6 +98,8 @@ export const siteConfigSchema = z.object({
 
 export type SiteConfig = z.infer<typeof siteConfigSchema>;
 
+const CONFIG_KEYS = new Set(Object.keys(siteConfigSchema.shape));
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -119,6 +121,30 @@ export function mergeConfig(base: SiteConfig, overrides: Record<string, unknown>
   return siteConfigSchema.parse(deepMerge(base, overrides));
 }
 
+function parseOverride(row: {
+  key: string;
+  value: string;
+}): { key: string; value: unknown } | null {
+  if (!CONFIG_KEYS.has(row.key)) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row.value) as unknown;
+  } catch {
+    console.warn(`Ignoring settings row "${row.key}": invalid JSON`);
+    return null;
+  }
+
+  try {
+    mergeConfig(defaultConfig, { [row.key]: parsed });
+  } catch {
+    console.warn(`Ignoring settings row "${row.key}": value does not match the config schema`);
+    return null;
+  }
+
+  return { key: row.key, value: parsed };
+}
+
 export async function loadConfig(db: D1Database): Promise<SiteConfig> {
   const { results } = await db
     .prepare('SELECT key, value FROM settings')
@@ -126,11 +152,8 @@ export async function loadConfig(db: D1Database): Promise<SiteConfig> {
 
   const overrides: Record<string, unknown> = {};
   for (const row of results) {
-    try {
-      overrides[row.key] = JSON.parse(row.value) as unknown;
-    } catch {
-      throw new Error(`Invalid JSON in settings key "${row.key}"`);
-    }
+    const override = parseOverride(row);
+    if (override) overrides[override.key] = override.value;
   }
 
   return mergeConfig(defaultConfig, overrides);

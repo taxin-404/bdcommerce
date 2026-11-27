@@ -27,6 +27,18 @@ describe('formatBdt', () => {
     expect(formatBdt(123456, { locale: 'en' })).toBe('৳1,23,456');
   });
 
+  it('uses a configured currency symbol', () => {
+    expect(formatBdt(1234, { symbol: 'Tk ' })).toBe('Tk ১,২৩৪');
+  });
+
+  it('uses English digits when the currency config disables Bangla digits', () => {
+    expect(formatBdt(1234, { bnDigits: false })).toBe('৳1,234');
+  });
+
+  it('uses Bangla digits when the currency config enables them', () => {
+    expect(formatBdt(1234, { locale: 'en', bnDigits: true })).toBe('৳১,২৩৪');
+  });
+
   it('can omit the currency symbol', () => {
     expect(formatBdt(1234, { withSymbol: false })).toBe('১,২৩৪');
   });
@@ -42,5 +54,9 @@ describe('formatBdt', () => {
   it('rejects non-finite amounts', () => {
     expect(() => formatBdt(Number.NaN)).toThrow(RangeError);
     expect(() => formatBdt(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+  });
+
+  it('rejects amounts beyond the safe integer range', () => {
+    expect(() => formatBdt(1e21)).toThrow(RangeError);
   });
 });

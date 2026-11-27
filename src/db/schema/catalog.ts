@@ -45,6 +45,7 @@ export const products = sqliteTable(
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
+    index('idx_products_status_id').on(table.status, table.id),
     index('idx_products_status_cat').on(table.status, table.categoryId, table.id),
     index('idx_products_featured').on(table.status, table.featured, table.id),
     check('products_status_check', sql`${table.status} in ('draft', 'active', 'archived')`),

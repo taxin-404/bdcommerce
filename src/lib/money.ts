@@ -23,6 +23,10 @@ function groupIndian(digits: string): string {
 export interface FormatBdtOptions {
   locale?: 'bn' | 'en';
   withSymbol?: boolean;
+  /** Currency symbol from `site.config.ts` (`currency.symbol`). */
+  symbol?: string;
+  /** Digit style from `site.config.ts` (`currency.bnDigits`). */
+  bnDigits?: boolean;
 }
 
 export function formatBdt(amount: number, options: FormatBdtOptions = {}): string {
@@ -30,11 +34,20 @@ export function formatBdt(amount: number, options: FormatBdtOptions = {}): strin
     throw new RangeError('amount must be a finite number');
   }
 
-  const { locale = 'bn', withSymbol = true } = options;
   const rounded = Math.round(amount);
+  if (!Number.isSafeInteger(rounded)) {
+    throw new RangeError('amount must be within the safe integer range');
+  }
+
+  const {
+    locale = 'bn',
+    withSymbol = true,
+    symbol = '৳',
+    bnDigits = locale === 'bn',
+  } = options;
   const sign = rounded < 0 ? '-' : '';
   const digits = groupIndian(String(Math.abs(rounded)));
-  const formatted = locale === 'bn' ? toBanglaDigits(digits) : digits;
+  const formatted = bnDigits ? toBanglaDigits(digits) : digits;
 
-  return `${sign}${withSymbol ? '৳' : ''}${formatted}`;
+  return `${sign}${withSymbol ? symbol : ''}${formatted}`;
 }
