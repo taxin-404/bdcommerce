@@ -193,7 +193,7 @@ importers:
         version: 6.1.6(@babel/core@7.29.13(supports-color@10.2.2))(preact@11.2.0)(supports-color@10.2.2)(vite@8.3.8(@types/node@26.6.11)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       '@hono/zod-validator':
         specifier: ^0.9.1
-        version: 0.9.1(hono@4.13.23)(zod@4.6.7)
+        version: 0.9.1(hono@4.13.18)(zod@4.6.7)
       astro:
         specifier: ^7.4.13
         version: 7.4.13(@types/node@26.6.11)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
@@ -201,8 +201,8 @@ importers:
         specifier: ^0.45.4
         version: 0.45.4
       hono:
-        specifier: ^4.13.23
-        version: 4.13.23
+        specifier: 4.13.18
+        version: 4.13.18
       preact:
         specifier: ^11.2.0
         version: 11.2.0(preact-render-to-string@6.8.3)
@@ -2363,8 +2363,8 @@ packages:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
     hasBin: true
 
-  hono@4.13.23:
-    resolution: {integrity: sha512-OS90dj7dcsftEEWCOef8jRbnHE5lbrOq0hNRqjSyPsOnaGZvvfof1KS05hQNb4kUOCfDq1mG3PmHoX37DMnHQg==}
+  hono@4.13.18:
+    resolution: {integrity: sha512-H9q/E1XizaWstJxUW881dmLxEj+t/TrGGnyxINkm4+sK0qUwsMtFdo2BWI9Vs3cIS19MU6b6iCijoUoEf4f3DA==}
     engines: {node: '>=16.9.0'}
 
   html-escaper@3.0.3:
@@ -4057,9 +4057,9 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@hono/zod-validator@0.9.1(hono@4.13.23)(zod@4.6.7)':
+  '@hono/zod-validator@0.9.1(hono@4.13.18)(zod@4.6.7)':
     dependencies:
-      hono: 4.13.23
+      hono: 4.13.18
       zod: 4.6.7
 
   '@img/colour@1.1.0': {}
@@ -5213,7 +5213,7 @@ snapshots:
 
   he@1.2.0: {}
 
-  hono@4.13.23: {}
+  hono@4.13.18: {}
 
   html-escaper@3.0.3: {}
 
