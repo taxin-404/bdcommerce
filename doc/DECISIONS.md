@@ -35,6 +35,7 @@ At the end of every phase, the agent appends its rulings here under a new headin
 - Query counts (dev instrumentation, D1 round trips): checkout 4 for a new order and 2 for an idempotent retry; cart price 2; cart and checkout pages 1; order and track pages 3.
 - Supersedes the Phase 3 "no JS framework on the storefront" ruling: the mini-cart, add-to-cart, cart page, and checkout use small Preact islands; catalog pages still ship only their small inline scripts.
 - The client stores one idempotency key per cart signature. Retrying an unchanged cart reuses the key; changing the cart rotates it, so a lost response cannot make the client clear a new cart while returning an old order.
+- Physical browser pass at 390 px: the header search moves to a full-width second row, and the confirmation page deduplicates locality names already present in the street address (for example "House 12, Road 5, Savar" + upazila Savar).
 
 ## Phase 1–2
 

@@ -1,3 +1,4 @@
+import { formatOrderAddress } from './address';
 import type { SiteConfig } from './config';
 import { t, type Locale } from './i18n';
 import { formatBdt, toBanglaDigits } from './money';
@@ -83,10 +84,7 @@ export function buildCheckoutFallback(input: {
     lines.push(t(locale, 'checkout.fallbackTotal', { amount: money(priced.total) }));
   }
 
-  const address = [customer.address, customer.upazila, customer.district, customer.division]
-    .filter(Boolean)
-    .filter((part, index, parts) => index === 0 || part.toLowerCase() !== parts[index - 1]?.toLowerCase())
-    .join(', ');
+  const address = formatOrderAddress(customer);
   lines.push(
     '',
     t(locale, 'checkout.fallbackCustomer', {

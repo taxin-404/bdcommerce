@@ -29,6 +29,7 @@ At the end of every phase, the agent appends its deferred items here. When an it
 - If the Turnstile widget script cannot load, the submit button stays blocked. Add a friendly retry/fallback path.
 - The mini-cart and track result lack a dedicated live region; review with the accessibility pass.
 - Mini-cart titles are stored at add time, so switching language leaves old-language titles until the cart page re-prices.
+- Confirmation is a one-time POST form; refreshing shows a resubmit warning. Move to a short-lived signed view cookie/token or a 303 redirect in Phase 8.
 
 ## Phase 9 (caching, resilience)
 - The language cookie MUST be part of the cache key, otherwise a Bangla page can be served to an English visitor.
@@ -37,7 +38,6 @@ At the end of every phase, the agent appends its deferred items here. When an it
 - FTS ranking and concurrent sync need a look during the query audit.
 - Parent-category price sorts use the `(status, price)` index instead of the category index because of the `IN (parent, children)` list. Re-check with a large catalog.
 - Categories with an inactive parent need a decision.
-- Confirmation is a one-time POST form; refreshing may prompt a resubmission. Consider a short-lived signed view cookie/token in Phase 9.
 - Consolidate the settings read with the cart/checkout first query; both pages currently make one settings round trip before the client re-prices.
 - The no-GET-writes test is file-level. Add a handler-level check so a future GET route cannot hide a write behind a shared helper.
 - When D1 fails before pricing, the fallback message lists only "the items in my cart" without names/prices. Show a cached/last-known summary if one is available.

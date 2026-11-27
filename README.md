@@ -7,6 +7,11 @@ Built with Astro SSR, Hono, D1, and R2 on Cloudflare Workers.
 
 **Status:** Phase 4 — cart, checkout, COD orders, confirmation, and tracking.
 
+> **Do not launch a real shop until Phase 7.** Checkout has no per-phone or
+> per-IP order limits yet, the blocklist is not enforced, and Turnstile is off by
+> default. Fake COD orders can drain tracked stock. Phase 7 adds those fraud
+> controls; until then, use this on a staging store only.
+
 ## One-click deploy
 
 Click the button above. Cloudflare reads `wrangler.jsonc`, provisions the D1

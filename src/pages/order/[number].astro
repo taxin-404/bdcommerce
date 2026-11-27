@@ -1,6 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
 import StorefrontLayout from '../../layouts/StorefrontLayout.astro';
+import { formatOrderAddress } from '../../lib/address';
 import { loadConfig, loadConfigFromRows } from '../../lib/config';
 import { formatDhakaDateTime } from '../../lib/datetime';
 import { t } from '../../lib/i18n';
@@ -176,11 +177,7 @@ const title = order
         <div class="card p-5 text-sm">
           <h2 class="text-lg font-semibold">{t(locale, 'order.delivery')}</h2>
           <p class="mt-2 font-medium">{order.customer_name}</p>
-          <p class="text-muted">
-            {order.address}
-            <br />
-            {[order.upazila, order.district, order.division].filter(Boolean).join(', ')}
-          </p>
+          <p class="text-muted">{formatOrderAddress(order)}</p>
           <p class="mt-2">
             <span class="text-muted">{t(locale, 'order.phone')}:</span> {order.phone}
           </p>
