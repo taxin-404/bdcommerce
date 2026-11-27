@@ -13,6 +13,9 @@ const { title, locale, orderId } = Astro.props;
 const otherLocale: AdminLocale = locale === 'bn' ? 'en' : 'bn';
 const langHref = `${Astro.url.pathname}?lang=${otherLocale}`;
 const backHref = orderId ? `/admin/orders/${orderId}` : '/admin/orders';
+const backLabel = orderId
+  ? t(locale, 'admin.order.backToOrder')
+  : t(locale, 'admin.order.backToList');
 ---
 
 <!doctype html>
@@ -49,7 +52,7 @@ const backHref = orderId ? `/admin/orders/${orderId}` : '/admin/orders';
   <body class="min-h-screen bg-slate-100 text-slate-900 antialiased">
     <div class="no-print mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3">
       <a href={backHref} class="text-sm text-teal-700 hover:underline">
-        ← {t(locale, 'admin.order.backToOrder')}
+        ← {backLabel}
       </a>
       <div class="flex gap-2">
         <a href={langHref} class="rounded border border-slate-300 bg-white px-2 py-1 text-xs uppercase">
