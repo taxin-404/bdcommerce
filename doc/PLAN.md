@@ -120,8 +120,12 @@ Wrangler config, prompts for the secrets listed in `.dev.vars.example`, runs our
 ```
 /
 ├─ AGENTS.md
-├─ PLAN.md
 ├─ README.md
+├─ doc/
+│  ├─ PLAN.md
+│  ├─ DECISIONS.md
+│  ├─ BACKLOG.md
+│  └─ IDEAS.md
 ├─ site.config.ts            # all business-specific values
 ├─ wrangler.jsonc
 ├─ .dev.vars.example         # secrets with comments (ADMIN_PASSPHRASE required, the rest optional)
@@ -337,14 +341,14 @@ Each phase: paste the prompt, review the diff, run the acceptance checks, commit
 ### Phase 0 — Scaffold and infrastructure
 
 **Prompt:**
-> Read AGENTS.md and PLAN.md. Do Phase 0 only. Scaffold an Astro SSR project with the Cloudflare adapter, Tailwind, Preact, TypeScript strict, Drizzle, Zod, Hono (+ `@hono/zod-validator`), Vitest, pnpm. Mount the Hono app at `src/pages/api/[...route].ts` with routes in `src/api/` and a `/api/health` route. Check current official docs for the adapter and wrangler config. Create `wrangler.jsonc` with D1 binding `DB`, R2 binding `IMAGES`, and static assets. Add the scripts listed in AGENTS.md. Create `.dev.vars.example`, `.gitignore`, a minimal README, and an optional `scripts/setup.sh` for CLI users that relies on Wrangler's automatic provisioning (never commit real resource IDs). Home page can be a placeholder that reads one row from D1 to prove the binding works locally. One-click deploy requirements: declare D1 binding `DB` and R2 binding `IMAGES` in `wrangler.jsonc` without resource IDs so the Deploy to Cloudflare button can auto-provision them (check the current Wrangler and deploy-button docs); add `package.json` scripts `build` and `deploy` where `deploy` applies remote D1 migrations (`wrangler d1 migrations apply DB --remote`) and then runs `wrangler deploy`; make `.dev.vars.example` list every secret with a comment, with only `ADMIN_PASSPHRASE` required; and add this button to the README: `[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/taxin-404/bdcommerce)`.
+> Read AGENTS.md and doc/PLAN.md. Do Phase 0 only. Scaffold an Astro SSR project with the Cloudflare adapter, Tailwind, Preact, TypeScript strict, Drizzle, Zod, Hono (+ `@hono/zod-validator`), Vitest, pnpm. Mount the Hono app at `src/pages/api/[...route].ts` with routes in `src/api/` and a `/api/health` route. Check current official docs for the adapter and wrangler config. Create `wrangler.jsonc` with D1 binding `DB`, R2 binding `IMAGES`, and static assets. Add the scripts listed in AGENTS.md. Create `.dev.vars.example`, `.gitignore`, a minimal README, and an optional `scripts/setup.sh` for CLI users that relies on Wrangler's automatic provisioning (never commit real resource IDs). Home page can be a placeholder that reads one row from D1 to prove the binding works locally. One-click deploy requirements: declare D1 binding `DB` and R2 binding `IMAGES` in `wrangler.jsonc` without resource IDs so the Deploy to Cloudflare button can auto-provision them (check the current Wrangler and deploy-button docs); add `package.json` scripts `build` and `deploy` where `deploy` applies remote D1 migrations (`wrangler d1 migrations apply DB --remote`) and then runs `wrangler deploy`; make `.dev.vars.example` list every secret with a comment, with only `ADMIN_PASSPHRASE` required; and add this button to the README: `[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/taxin-404/bdcommerce)`.
 
 **Done when:** `pnpm dev` runs, the placeholder page reads from local D1, `pnpm typecheck && pnpm build` pass.
 
 ### Phase 1 — Schema, config, seed
 
 **Prompt:**
-> Do Phase 1. Implement the full D1 schema from PLAN.md section 6 as Drizzle schema plus a SQL migration including all indexes. Create `site.config.ts` per section 5, a typed config loader that merges the `settings` table overrides, `lib/money.ts` (BDT formatting incl. Bangla digits), `lib/phone.ts` (validate + normalize), and `lib/i18n.ts` with `bn.json`/`en.json`. Write Vitest tests for money and phone. Create `scripts/seed.ts` producing demo data for three business types (clothing with size/color variants, a food shop with weight options, an electronics item with spec attributes).
+> Do Phase 1. Implement the full D1 schema from doc/PLAN.md section 6 as Drizzle schema plus a SQL migration including all indexes. Create `site.config.ts` per section 5, a typed config loader that merges the `settings` table overrides, `lib/money.ts` (BDT formatting incl. Bangla digits), `lib/phone.ts` (validate + normalize), and `lib/i18n.ts` with `bn.json`/`en.json`. Write Vitest tests for money and phone. Create `scripts/seed.ts` producing demo data for three business types (clothing with size/color variants, a food shop with weight options, an electronics item with spec attributes).
 
 **Done when:** migration applies locally, seed runs, tests pass.
 
@@ -415,7 +419,7 @@ Each phase: paste the prompt, review the diff, run the acceptance checks, commit
 
 ## 10. Tips for vibe-coding this with opencode
 
-- Put `AGENTS.md` and `PLAN.md` in the repo root before the first session. opencode reads `AGENTS.md` automatically.
+- Put `AGENTS.md` in the repo root and `PLAN.md` in `doc/` before the first session. opencode reads `AGENTS.md` automatically.
 - Use the plan agent first on each phase ("outline what you will change"), then switch to build once the plan looks right.
 - One phase per session; commit after each. If a session gets long and sloppy, start a new one and point it at the files.
 - Always make it run `pnpm typecheck && pnpm test && pnpm build` and show output.
