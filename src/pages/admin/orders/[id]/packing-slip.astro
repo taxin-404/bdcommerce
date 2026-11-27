@@ -1,0 +1,107 @@
+---
+import { env } from 'cloudflare:workers';
+import PrintLayout from '../../../../layouts/PrintLayout.astro';
+import { resolveAdminLocale } from '../../../../lib/admin-locale';
+import { loadOrderForPrint } from '../../../../lib/admin-order-detail';
+import { loadConfig } from '../../../../lib/config';
+import { formatDhakaDateTime } from '../../../../lib/datetime';
+import { t } from '../../../../lib/i18n';
+import { countRoundTrips, logQueryCount } from '../../../../lib/query-log';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('admin_locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+const id = Number(Astro.params.id);
+const validId = Number.isSafeInteger(id) && id > 0;
+
+const { value: db, count } = countRoundTrips(env.DB);
+const [data, config] = await Promise.all([
+  validId ? loadOrderForPrint(db, id) : Promise.resolve(null),
+  loadConfig(db),
+]);
+logQueryCount('admin/orders/[id]/packing-slip', count());
+
+if (!data) Astro.response.status = 404;
+const order = data?.order ?? null;
+const items = data?.items ?? [];
+const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+---
+
+<PrintLayout
+  title={order ? `${t(locale, 'admin.print.packingSlip')} ${order.number}` : t(locale, 'admin.order.notFoundTitle')}
+  locale={locale}
+  orderId={order?.id ?? 0}
+>
+  {
+    !order ? (
+      <p class="py-10 text-center text-slate-500">{t(locale, 'admin.order.notFound')}</p>
+    ) : (
+      <article>
+        <header class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
+          <div>
+            <h1 class="text-xl font-bold">{config.name[locale]}</h1>
+            <p class="mt-1 text-xs text-slate-600">{config.contact.phone}</p>
+          </div>
+          <div class="text-right">
+            <h2 class="text-lg font-semibold">{t(locale, 'admin.print.packingSlip')}</h2>
+            <p class="font-mono text-sm">{order.number}</p>
+            <p class="text-xs text-slate-600">{formatDhakaDateTime(order.created_at, locale)}</p>
+          </div>
+        </header>
+
+        <section class="mt-4">
+          <h3 class="text-xs font-semibold uppercase text-slate-500">
+            {t(locale, 'admin.print.deliverTo')}
+          </h3>
+          <p class="mt-1 font-medium">{order.customer_name}</p>
+          <p class="text-sm">{order.phone}</p>
+          <p class="text-sm">
+            {[order.address, order.upazila, order.district, order.division]
+              .filter(Boolean)
+              .join(', ')}
+          </p>
+        </section>
+
+        <table class="mt-6 w-full border-collapse text-left text-sm">
+          <thead>
+            <tr class="border-b border-slate-300 text-xs uppercase text-slate-500">
+              <th class="py-2 pr-2">{t(locale, 'admin.print.item')}</th>
+              <th class="py-2 pl-2 text-right">{t(locale, 'admin.order.qty')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr class="border-b border-slate-100 align-top">
+                <td class="py-2 pr-2">
+                  <span class="font-medium">{item.title_snapshot}</span>
+                  {item.variant_snapshot && (
+                    <span class="block text-xs text-slate-500">{item.variant_snapshot}</span>
+                  )}
+                </td>
+                <td class="py-2 pl-2 text-right text-lg font-semibold">{item.qty}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <p class="mt-3 text-right text-sm font-semibold">
+          {t(locale, 'admin.print.totalItems')}: {totalQty}
+        </p>
+
+        {order.note && (
+          <p class="mt-6 rounded border border-slate-200 p-3 text-sm">
+            <span class="font-medium">{t(locale, 'admin.order.note')}:</span> {order.note}
+          </p>
+        )}
+
+        <p class="mt-8 text-center text-xs text-slate-500">{t(locale, 'admin.print.thanks')}</p>
+      </article>
+    )
+  }
+</PrintLayout>

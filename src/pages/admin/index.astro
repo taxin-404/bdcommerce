@@ -2,7 +2,11 @@
 import { env } from 'cloudflare:workers';
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { resolveAdminLocale } from '../../lib/admin-locale';
+import { loadAdminDashboard } from '../../lib/admin-dashboard';
+import { loadConfig } from '../../lib/config';
+import { formatBdt } from '../../lib/money';
 import { t } from '../../lib/i18n';
+import { countRoundTrips, logQueryCount } from '../../lib/query-log';
 
 const requested = Astro.url.searchParams.get('lang');
 if (requested === 'bn' || requested === 'en') {
@@ -14,37 +18,55 @@ if (requested === 'bn' || requested === 'en') {
 }
 const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
 
-const [products, active, categories] = await Promise.all([
-  env.DB.prepare('SELECT COUNT(*) AS count FROM products').first<{ count: number }>(),
-  env.DB.prepare("SELECT COUNT(*) AS count FROM products WHERE status = 'active'").first<{
-    count: number;
-  }>(),
-  env.DB.prepare('SELECT COUNT(*) AS count FROM categories').first<{ count: number }>(),
-]);
+const { value: db, count } = countRoundTrips(env.DB);
+const [dashboard, config] = await Promise.all([loadAdminDashboard(db), loadConfig(db)]);
+logQueryCount('admin/dashboard', count());
+
+const money = (amount: number) =>
+  formatBdt(amount, {
+    locale,
+    symbol: config.currency.symbol,
+    bnDigits: config.currency.bnDigits,
+  });
 
 const cards = [
   {
-    label: t(locale, 'admin.stats.products'),
-    value: products?.count ?? 0,
+    label: t(locale, 'admin.dashboardCards.todayOrders'),
+    value: String(dashboard.todayOrders),
+    href: '/admin/orders',
+  },
+  {
+    label: t(locale, 'admin.dashboardCards.pendingOrders'),
+    value: String(dashboard.pendingOrders),
+    href: '/admin/orders?status=pending',
+  },
+  {
+    label: t(locale, 'admin.dashboardCards.weekRevenue'),
+    value: money(dashboard.weekRevenue),
+    href: '/admin/orders',
+    hint: t(locale, 'admin.dashboardCards.weekHint'),
+  },
+  {
+    label: t(locale, 'admin.dashboardCards.lowStock'),
+    value: String(dashboard.lowStockCount),
     href: '/admin/products',
-  },
-  {
-    label: t(locale, 'admin.stats.active'),
-    value: active?.count ?? 0,
-    href: '/admin/products?status=active',
-  },
-  {
-    label: t(locale, 'admin.stats.categories'),
-    value: categories?.count ?? 0,
-    href: '/admin/categories',
+    hint: t(locale, 'admin.dashboardCards.lowStockHint'),
   },
 ];
 ---
 
 <AdminLayout title={t(locale, 'admin.dashboard')} locale={locale} current="dashboard">
-  <h1 class="mb-6 text-2xl font-semibold">{t(locale, 'admin.welcome')}</h1>
+  <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-semibold">{t(locale, 'admin.welcome')}</h1>
+    <a
+      href="/admin/orders?status=pending"
+      class="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+    >
+      {t(locale, 'admin.dashboardCards.viewPending')}
+    </a>
+  </div>
 
-  <div class="grid gap-4 sm:grid-cols-3">
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     {
       cards.map((card) => (
         <a
@@ -52,16 +74,50 @@ const cards = [
           class="rounded-xl bg-white p-5 shadow-sm transition hover:shadow"
         >
           <span class="block text-sm text-slate-500">{card.label}</span>
-          <span class="mt-1 block text-3xl font-semibold text-teal-800">{card.value}</span>
+          <span class="mt-1 block text-2xl font-semibold text-teal-800">{card.value}</span>
+          {card.hint && <span class="mt-1 block text-xs text-slate-400">{card.hint}</span>}
         </a>
       ))
     }
   </div>
 
+  <section class="mt-6 rounded-xl bg-white p-5 shadow-sm">
+    <h2 class="text-lg font-semibold">{t(locale, 'admin.dashboardCards.lowStockTitle')}</h2>
+    {
+      dashboard.lowStock.length === 0 ? (
+        <p class="mt-2 text-sm text-slate-500">{t(locale, 'admin.dashboardCards.noLowStock')}</p>
+      ) : (
+        <ul class="mt-3 divide-y divide-slate-100">
+          {dashboard.lowStock.map((variant) => (
+            <li class="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+              <a
+                href={`/admin/products/${variant.product_id}`}
+                class="font-medium text-teal-700 hover:underline"
+              >
+                {locale === 'bn' && variant.title_bn ? variant.title_bn : variant.title}
+              </a>
+              <span class="text-slate-500">{variant.variant_title}</span>
+              <span
+                class:list={[
+                  'rounded-full px-2 py-0.5 text-xs font-semibold',
+                  variant.stock === 0
+                    ? 'bg-rose-100 text-rose-900'
+                    : 'bg-amber-100 text-amber-900',
+                ]}
+              >
+                {t(locale, 'admin.dashboardCards.stockLeft', { count: variant.stock })}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
+
   <div class="mt-6 flex flex-wrap gap-3">
     <a
       href="/admin/products/new"
-      class="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+      class="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
     >
       {t(locale, 'admin.product.new')}
     </a>

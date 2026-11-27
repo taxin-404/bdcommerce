@@ -1,6 +1,19 @@
 import { z } from 'zod';
+import { ORDER_STATUSES } from '../order-status';
 
 export const idParamSchema = z.coerce.number().int().positive();
+
+export const orderStatusSchema = z.enum(ORDER_STATUSES);
+
+export const orderStatusUpdateSchema = z.object({
+  status: orderStatusSchema,
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+export const blocklistInputSchema = z.object({
+  phone: z.string().trim().min(1).max(30),
+  reason: z.string().trim().max(200).nullable().optional(),
+});
 
 export const loginSchema = z.object({
   passphrase: z.string().min(1).max(500),

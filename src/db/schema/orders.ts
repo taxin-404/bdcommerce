@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { desc, sql } from 'drizzle-orm';
 import { check, index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const orders = sqliteTable(
@@ -44,6 +44,23 @@ export const orders = sqliteTable(
   (table) => [
     index('idx_orders_phone').on(table.phone, table.createdAt),
     index('idx_orders_status').on(table.status, table.createdAt),
+    index('idx_orders_created_id').on(desc(table.createdAt), desc(table.id)),
+    index('idx_orders_status_created_id').on(
+      table.status,
+      desc(table.createdAt),
+      desc(table.id),
+    ),
+    index('idx_orders_phone_created_id').on(
+      table.phone,
+      desc(table.createdAt),
+      desc(table.id),
+    ),
+    index('idx_orders_phone_status_created_id').on(
+      table.phone,
+      table.status,
+      desc(table.createdAt),
+      desc(table.id),
+    ),
     check(
       'orders_status_check',
       sql`${table.status} in ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'returned')`,
@@ -70,6 +87,7 @@ export const orderItems = sqliteTable(
     unitPrice: integer('unit_price').notNull(),
     qty: integer('qty').notNull(),
     lineTotal: integer('line_total').notNull(),
+    stockTracked: integer('stock_tracked').notNull().default(0),
   },
   (table) => [index('idx_items_order').on(table.orderId)],
 );

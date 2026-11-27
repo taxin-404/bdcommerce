@@ -26,7 +26,6 @@
   },
   "admin": {
     "title": "Admin",
-    "dashboard": "Dashboard",
     "categories": "Categories",
     "products": "Products",
     "logout": "Sign out",
@@ -127,7 +126,12 @@
       "badOrigin": "The request came from another site and was blocked.",
       "rateLimited": "Too many attempts. Try again later.",
       "adminNotConfigured": "ADMIN_PASSPHRASE is not set for this deployment.",
-      "adminPassphraseInvalid": "Admin login is disabled: ADMIN_PASSPHRASE is missing, too short, or a placeholder/known-weak value. Set a random passphrase of at least 16 characters."
+      "adminPassphraseInvalid": "Admin login is disabled: ADMIN_PASSPHRASE is missing, too short, or a placeholder/known-weak value. Set a random passphrase of at least 16 characters.",
+      "order_not_found": "Order not found.",
+      "invalid_transition": "That status change is not allowed.",
+      "status_conflict": "Another admin changed this order. Reload and try again.",
+      "invalid_phone": "Enter a valid Bangladeshi mobile number.",
+      "db_unavailable": "The database is unavailable right now. Try again."
     },
     "reindex": {
       "action": "Reindex search",
@@ -137,7 +141,114 @@
     },
     "passphraseMissing": "Admin login is disabled: ADMIN_PASSPHRASE is not set. Set a random passphrase of at least 16 characters.",
     "passphraseShort": "Admin login is disabled: ADMIN_PASSPHRASE is too short. Use a random passphrase of at least 16 characters.",
-    "passphraseWeak": "Admin login is disabled: ADMIN_PASSPHRASE is a placeholder or known-weak value. Choose a random passphrase of at least 16 characters."
+    "passphraseWeak": "Admin login is disabled: ADMIN_PASSPHRASE is a placeholder or known-weak value. Choose a random passphrase of at least 16 characters.",
+    "orders": "Orders",
+    "order": {
+      "status": "Status",
+      "allStatuses": "All statuses",
+      "phone": "Phone",
+      "phonePlaceholder": "01XXXXXXXXX",
+      "from": "From (Asia/Dhaka)",
+      "to": "To (Asia/Dhaka)",
+      "dateHint": "Filters use whole days in Asia/Dhaka.",
+      "filter": "Filter",
+      "clear": "Clear",
+      "newest": "Newest first",
+      "next": "Older orders",
+      "empty": "No orders match these filters.",
+      "filterErrors": {
+        "invalid_status": "Choose a valid order status.",
+        "invalid_phone": "Enter a valid Bangladeshi mobile number.",
+        "invalid_date": "Use a valid date.",
+        "invalid_range": "The start date must be on or before the end date."
+      },
+      "statusLabel": {
+        "pending": "Pending",
+        "confirmed": "Confirmed",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "cancelled": "Cancelled",
+        "returned": "Returned"
+      },
+      "payment": {
+        "cod": "Cash on delivery",
+        "bkash": "bKash",
+        "nagad": "Nagad"
+      },
+      "paymentStatus": {
+        "unpaid": "Unpaid",
+        "pending_verification": "Pending verification",
+        "paid": "Paid",
+        "refunded": "Refunded"
+      },
+      "detail": "Order",
+      "notFoundTitle": "Order not found",
+      "notFound": "That order does not exist.",
+      "backToList": "Back to orders",
+      "invoice": "Invoice",
+      "packingSlip": "Packing slip",
+      "blocked": "Phone blocked",
+      "items": "Items",
+      "qty": "Qty",
+      "subtotal": "Subtotal",
+      "discount": "Discount",
+      "shipping": "Shipping",
+      "total": "Total",
+      "customer": "Customer",
+      "note": "Note",
+      "blockAction": "Block this phone",
+      "blockConfirm": "Add this phone number to the blocklist?",
+      "blockReason": "Reason (optional)",
+      "blockFailed": "Could not block this phone.",
+      "blockedHint": "This phone is on the blocklist. Checkout enforcement arrives in Phase 7.",
+      "actions": "Actions",
+      "noActions": "No further status changes are allowed.",
+      "statusConfirm": "Change the status to {status}?",
+      "statusFailed": "Could not change the order status.",
+      "timeline": "Timeline",
+      "transition": {
+        "confirmed": "Confirm order",
+        "shipped": "Mark shipped",
+        "delivered": "Mark delivered",
+        "cancelled": "Cancel order",
+        "returned": "Mark returned"
+      },
+      "event": {
+        "created": "Order placed",
+        "pending": "Pending",
+        "confirmed": "Confirmed",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "cancelled": "Cancelled",
+        "returned": "Returned"
+      },
+      "backToOrder": "Back to order"
+    },
+    "print": {
+      "action": "Print",
+      "invoice": "Invoice",
+      "packingSlip": "Packing slip",
+      "billTo": "Bill to",
+      "deliverTo": "Deliver to",
+      "item": "Item",
+      "unitPrice": "Unit price",
+      "lineTotal": "Line total",
+      "thanks": "Thank you for your order.",
+      "totalItems": "Total items"
+    },
+    "dashboardCards": {
+      "todayOrders": "Today's orders",
+      "pendingOrders": "Pending orders",
+      "weekRevenue": "This week's revenue",
+      "weekHint": "Saturday–Friday, Asia/Dhaka; cancelled and returned excluded",
+      "lowStock": "Low-stock variants",
+      "lowStockHint": "Tracked, active variants at or below 5; showing up to 10",
+      "lowStockTitle": "Low-stock tracked variants",
+      "noLowStock": "No tracked variants are low on stock.",
+      "stockLeft": "{count} left",
+      "viewPending": "Review pending orders"
+    },
+    "dashboard": "Dashboard"
   },
   "storefront": {
     "shopNow": "Shop now",

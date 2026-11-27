@@ -87,5 +87,8 @@ export const variants = sqliteTable(
     stock: integer('stock').notNull().default(0),
     active: integer('active', { mode: 'boolean' }).notNull().default(true),
   },
-  (table) => [index('idx_variants_product').on(table.productId)],
+  (table) => [
+    index('idx_variants_product').on(table.productId),
+    index('idx_variants_stock').on(table.stock, table.id),
+  ],
 );
