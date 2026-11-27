@@ -1,4 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
+import { validateAdminPassphrase } from '../../lib/admin-passphrase';
 import { Hono } from 'hono';
 import {
   ADMIN_COOKIE_NAME,
@@ -42,6 +43,22 @@ adminAuthRoutes.use('*', async (c, next) => {
 });
 
 adminAuthRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
+  const configured = validateAdminPassphrase(c.env.ADMIN_PASSPHRASE);
+  if (!configured.ok) {
+    return c.json(
+      {
+        ok: false,
+        error: {
+          code: 'admin_passphrase_invalid',
+          reason: configured.reason,
+          message:
+            'Admin login is disabled: ADMIN_PASSPHRASE must be a random passphrase of at least 16 characters',
+        },
+      },
+      503,
+    );
+  }
+
   const { passphrase } = c.req.valid('json');
   const db = c.env.DB;
   const ipHash = await hashClientIp(clientIp(c.req.raw));
@@ -59,19 +76,7 @@ adminAuthRoutes.post('/login', zValidator('json', loginSchema), async (c) => {
     );
   }
 
-  const expected = c.env.ADMIN_PASSPHRASE;
-  if (!expected) {
-    return c.json(
-      {
-        ok: false,
-        error: {
-          code: 'admin_not_configured',
-          message: 'ADMIN_PASSPHRASE is not set for this deployment',
-        },
-      },
-      503,
-    );
-  }
+  const expected = configured.passphrase;
 
   if (!(await constantTimeEqual(passphrase, expected))) {
     await recordLoginFailure(db, ipHash);

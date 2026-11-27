@@ -1,8 +1,9 @@
-# Required. Use a long, random admin login passphrase.
-# From Phase 2, the admin session signing key is derived from this value with
-# HKDF-SHA256 plus a random per-install salt stored in the settings table.
-# There is no separate SESSION_SECRET.
-ADMIN_PASSPHRASE=replace-with-a-long-random-passphrase
+# Required. Use a random passphrase of at least 16 characters.
+# Generate one with: openssl rand -base64 24
+# The admin session signing key is derived from this value with HKDF-SHA256
+# plus a random per-install salt stored in the settings table. There is no
+# separate SESSION_SECRET.
+ADMIN_PASSPHRASE=
 
 # Optional secrets for later phases (Turnstile, courier, Facebook CAPI) will be
 # documented here when those integrations are added.

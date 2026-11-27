@@ -15,6 +15,12 @@ database and R2 bucket automatically, runs `pnpm run build`, and then runs
 the generated IDs belong only to the deploying account and are never committed
 to this repository.
 
+When the deploy prompts for `ADMIN_PASSPHRASE`, use a random passphrase of at
+least 16 characters (for example, `openssl rand -base64 24`). Admin login stays
+disabled for missing, short, or placeholder/known-weak values, including the old
+example text. The repository pins Node.js with `.node-version` (22.23.4) so the
+button build does not depend on the build image's current default.
+
 ## Requirements
 
 - Node.js >= 22.23.4

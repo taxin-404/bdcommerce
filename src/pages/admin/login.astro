@@ -2,6 +2,7 @@
 import '../../styles/global.css';
 import { env } from 'cloudflare:workers';
 import { resolveAdminLocale } from '../../lib/admin-locale';
+import { validateAdminPassphrase } from '../../lib/admin-passphrase';
 import { ADMIN_COOKIE_NAME, verifySessionCookie } from '../../lib/auth';
 import { t } from '../../lib/i18n';
 
@@ -14,10 +15,19 @@ if (requested === 'bn' || requested === 'en') {
   });
 }
 const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+const passphraseCheck = validateAdminPassphrase(env.ADMIN_PASSPHRASE);
+const configErrorKey = passphraseCheck.ok
+  ? null
+  : passphraseCheck.reason === 'missing'
+    ? 'admin.passphraseMissing'
+    : passphraseCheck.reason === 'short'
+      ? 'admin.passphraseShort'
+      : 'admin.passphraseWeak';
+const configError = configErrorKey ? t(locale, configErrorKey) : null;
 
 const cookie = Astro.cookies.get(ADMIN_COOKIE_NAME)?.value;
-if (env.ADMIN_PASSPHRASE && cookie) {
-  const session = await verifySessionCookie(cookie, env.DB, env.ADMIN_PASSPHRASE);
+if (passphraseCheck.ok && cookie) {
+  const session = await verifySessionCookie(cookie, env.DB, passphraseCheck.passphrase);
   if (session) return Astro.redirect('/admin');
 }
 
@@ -43,13 +53,24 @@ const otherLocale = locale === 'bn' ? 'en' : 'bn';
         </a>
       </div>
 
+      {configError && (
+        <p
+          id="config-error"
+          role="alert"
+          class="mb-4 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+        >
+          {configError}
+        </p>
+      )}
+
       <form
         id="login-form"
         class="space-y-4"
         data-next={next}
+        data-disabled={passphraseCheck.ok ? 'false' : 'true'}
         data-error={t(locale, 'admin.loginError')}
         data-rate={t(locale, 'admin.rateLimited')}
-        data-config={t(locale, 'admin.notConfigured')}
+        data-config={configError ?? t(locale, 'admin.notConfigured')}
         data-network={t(locale, 'errors.network')}
       >
         <label class="block text-sm font-medium" for="passphrase">
@@ -62,12 +83,14 @@ const otherLocale = locale === 'bn' ? 'en' : 'bn';
           required
           autocomplete="current-password"
           autofocus
-          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-200"
+          disabled={!passphraseCheck.ok}
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-200 disabled:bg-slate-100"
         />
         <p id="login-error" class="hidden rounded bg-rose-50 px-3 py-2 text-sm text-rose-700"></p>
         <button
           type="submit"
-          class="w-full rounded bg-teal-700 px-4 py-2 font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+          disabled={!passphraseCheck.ok}
+          class="w-full rounded bg-teal-700 px-4 py-2 font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {t(locale, 'admin.login')}
         </button>
@@ -91,6 +114,7 @@ const otherLocale = locale === 'bn' ? 'en' : 'bn';
 
       form?.addEventListener('submit', async (event) => {
         event.preventDefault();
+        if (!form || form.dataset.disabled === 'true') return;
         errorBox?.classList.add('hidden');
 
         const button = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
@@ -115,7 +139,7 @@ const otherLocale = locale === 'bn' ? 'en' : 'bn';
         } catch {
           show(form.dataset.network ?? '');
         } finally {
-          if (button) button.disabled = false;
+          if (button && form.dataset.disabled !== 'true') button.disabled = false;
         }
       });
     </script>

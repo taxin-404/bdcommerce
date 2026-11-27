@@ -1,4 +1,5 @@
 import { createMiddleware } from 'hono/factory';
+import { validateAdminPassphrase } from '../../lib/admin-passphrase';
 import type { AdminSession } from '../../lib/auth';
 import { ADMIN_COOKIE_NAME, parseCookieHeader, verifySessionCookie } from '../../lib/auth';
 import { isAllowedOrigin } from '../../lib/http';
@@ -18,14 +19,16 @@ export const requireAdmin = createMiddleware<AdminEnv>(async (c, next) => {
     );
   }
 
-  const passphrase = c.env.ADMIN_PASSPHRASE;
-  if (!passphrase) {
+  const configured = validateAdminPassphrase(c.env.ADMIN_PASSPHRASE);
+  if (!configured.ok) {
     return c.json(
       {
         ok: false,
         error: {
-          code: 'admin_not_configured',
-          message: 'ADMIN_PASSPHRASE is not set for this deployment',
+          code: 'admin_passphrase_invalid',
+          reason: configured.reason,
+          message:
+            'Admin login is disabled: ADMIN_PASSPHRASE must be a random passphrase of at least 16 characters',
         },
       },
       503,
@@ -33,7 +36,9 @@ export const requireAdmin = createMiddleware<AdminEnv>(async (c, next) => {
   }
 
   const cookie = parseCookieHeader(c.req.header('cookie') ?? null, ADMIN_COOKIE_NAME);
-  const session = cookie ? await verifySessionCookie(cookie, c.env.DB, passphrase) : null;
+  const session = cookie
+    ? await verifySessionCookie(cookie, c.env.DB, configured.passphrase)
+    : null;
   if (!session) {
     return c.json(
       { ok: false, error: { code: 'unauthorized', message: 'Sign in to continue' } },

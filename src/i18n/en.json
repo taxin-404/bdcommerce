@@ -125,14 +125,18 @@
       "invalidProduct": "The product was not found.",
       "badOrigin": "The request came from another site and was blocked.",
       "rateLimited": "Too many attempts. Try again later.",
-      "adminNotConfigured": "ADMIN_PASSPHRASE is not set for this deployment."
+      "adminNotConfigured": "ADMIN_PASSPHRASE is not set for this deployment.",
+      "adminPassphraseInvalid": "Admin login is disabled: ADMIN_PASSPHRASE is missing, too short, or a placeholder/known-weak value. Set a random passphrase of at least 16 characters."
     },
     "reindex": {
       "action": "Reindex search",
       "running": "Rebuilding the search index...",
       "done": "Search index rebuilt ({count} products).",
       "failed": "Could not rebuild the search index."
-    }
+    },
+    "passphraseMissing": "Admin login is disabled: ADMIN_PASSPHRASE is not set. Set a random passphrase of at least 16 characters.",
+    "passphraseShort": "Admin login is disabled: ADMIN_PASSPHRASE is too short. Use a random passphrase of at least 16 characters.",
+    "passphraseWeak": "Admin login is disabled: ADMIN_PASSPHRASE is a placeholder or known-weak value. Choose a random passphrase of at least 16 characters."
   },
   "storefront": {
     "shopNow": "Shop now",
