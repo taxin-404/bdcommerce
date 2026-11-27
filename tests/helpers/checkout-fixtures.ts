@@ -14,7 +14,10 @@ export interface CheckoutRequestBody {
     note: string | null;
   };
   items: Array<{ product_id: number; variant_id: number | null; qty: number }>;
-  payment_method: 'cod';
+  payment_method: 'cod' | 'bkash' | 'nagad';
+  coupon_code?: string | null;
+  payment_sender?: string | null;
+  payment_trx_id?: string | null;
   turnstile_token?: string;
 }
 
@@ -43,7 +46,12 @@ export function checkoutBody(
       variant_id: item.variant_id ?? null,
       qty: item.qty,
     })),
-    payment_method: 'cod',
+    payment_method: overrides.payment_method ?? 'cod',
+    ...(overrides.coupon_code !== undefined ? { coupon_code: overrides.coupon_code } : {}),
+    ...(overrides.payment_sender !== undefined ? { payment_sender: overrides.payment_sender } : {}),
+    ...(overrides.payment_trx_id !== undefined
+      ? { payment_trx_id: overrides.payment_trx_id }
+      : {}),
     ...(overrides.turnstile_token ? { turnstile_token: overrides.turnstile_token } : {}),
   };
 }

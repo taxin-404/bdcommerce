@@ -9,9 +9,19 @@ interface Props {
   bnDigits: boolean;
   priced: PricedCart | null;
   loading: boolean;
+  discount?: number;
+  couponCode?: string | null;
 }
 
-export default function OrderSummary({ locale, symbol, bnDigits, priced, loading }: Props) {
+export default function OrderSummary({
+  locale,
+  symbol,
+  bnDigits,
+  priced,
+  loading,
+  discount = 0,
+  couponCode = null,
+}: Props) {
   const money = (amount: number) => formatBdt(amount, { locale, symbol, bnDigits });
   const number = (value: number) =>
     locale === 'bn' && bnDigits ? toBanglaDigits(value) : String(value);
@@ -61,9 +71,25 @@ export default function OrderSummary({ locale, symbol, bnDigits, priced, loading
                     : money(priced.shipping_fee)}
               </dd>
             </div>
+            {discount > 0 && (
+              <div class="flex justify-between">
+                <dt class="text-muted">
+                  {t(locale, 'checkout.discount')}
+                  {couponCode ? ` (${couponCode})` : ''}
+                </dt>
+                <dd>−{money(discount)}</dd>
+              </div>
+            )}
             <div class="flex justify-between border-t border-[var(--color-border)] pt-2 text-base font-semibold">
               <dt>{t(locale, 'order.total')}</dt>
-              <dd>{money(priced.total)}</dd>
+              <dd>
+                {money(
+                  Math.max(
+                    0,
+                    priced.subtotal - discount + (priced.shipping_fee ?? 0),
+                  ),
+                )}
+              </dd>
             </div>
           </dl>
         </>

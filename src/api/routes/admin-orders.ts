@@ -3,11 +3,13 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { AdminEnv } from '../middleware/admin';
 import { changeOrderStatus } from '../../lib/order-status';
+import { changePaymentStatus } from '../../lib/payments';
 import { blockPhone } from '../../lib/blocklist';
 import {
   blocklistInputSchema,
   idParamSchema,
   orderStatusUpdateSchema,
+  paymentActionSchema,
 } from '../../lib/validation/admin';
 import { badRequest, notFound, serverUnavailable, validationErrorResponse } from '../validation';
 
@@ -85,6 +87,86 @@ adminOrderRoutes.post(
         previous_status: result.from,
         payment_status: result.paymentStatus,
         stock_restored: result.restoredStock,
+      },
+    });
+  },
+);
+
+adminOrderRoutes.post(
+  '/:id/payment',
+  zValidator('param', orderParamSchema, (result, c) => {
+    if (!result.success) return invalidInput(result, c);
+  }),
+  zValidator('json', paymentActionSchema, (result, c) => {
+    if (!result.success) return invalidInput(result, c);
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const input = c.req.valid('json');
+
+    const result = await changePaymentStatus({
+      db: c.env.DB,
+      orderId: id,
+      action: input.action,
+      note: input.note ?? null,
+    });
+
+    if (!result.ok) {
+      if (result.code === 'not_found') {
+        return notFound(c, 'order_not_found', 'Order not found');
+      }
+      if (result.code === 'invalid_payment_method') {
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'invalid_payment_method',
+              message: 'Only bKash and Nagad payments can be verified',
+            },
+          },
+          409,
+        );
+      }
+      if (result.code === 'invalid_transition') {
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'invalid_transition',
+              message: `Cannot ${input.action} a payment that is ${result.currentStatus ?? 'in another state'}`,
+              current_status: result.currentStatus ?? null,
+            },
+          },
+          409,
+        );
+      }
+      if (result.code === 'status_conflict') {
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'status_conflict',
+              message: 'Another admin changed this payment. Reload and try again.',
+            },
+          },
+          409,
+        );
+      }
+      return serverUnavailable(
+        c,
+        'db_unavailable',
+        'The payment could not be updated right now. Try again.',
+      );
+    }
+
+    return c.json({
+      ok: true,
+      data: {
+        id: result.id,
+        action: result.action,
+        previous_status: result.from,
+        payment_status: result.to,
+        event: result.event,
       },
     });
   },

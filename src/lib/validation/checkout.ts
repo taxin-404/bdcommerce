@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MAX_CART_LINES, MAX_LINE_QTY, hasDuplicateCartLines } from '../cart';
+import { normalizeCouponCode } from '../coupons';
 
 export const cartItemInputSchema = z.object({
   product_id: z.number().int().positive(),
@@ -53,18 +54,65 @@ const customerSchema = z.object({
     .transform((value) => (value ? value : null)),
 });
 
-export const checkoutSchema = z.object({
-  idempotency_key: z
+const optionalCouponCode = z
+  .string()
+  .trim()
+  .max(32)
+  .nullable()
+  .optional()
+  .transform((value) => (value ? normalizeCouponCode(value) : null));
+
+export const checkoutSchema = z
+  .object({
+    idempotency_key: z
+      .string()
+      .trim()
+      .min(8)
+      .max(100)
+      .regex(/^[A-Za-z0-9_-]+$/, 'Use letters, digits, dashes, or underscores'),
+    locale: z.enum(['bn', 'en']).default('bn'),
+    customer: customerSchema,
+    items: cartItemsSchema,
+    payment_method: z.enum(['cod', 'bkash', 'nagad']),
+    coupon_code: optionalCouponCode,
+    payment_sender: z.string().trim().max(20).nullable().optional(),
+    payment_trx_id: z.string().trim().max(32).nullable().optional(),
+    turnstile_token: z.string().trim().max(2048).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.payment_method === 'cod') return;
+
+    if (!value.payment_sender) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['payment_sender'],
+        message: 'Enter the mobile number you paid from',
+      });
+    }
+    if (!value.payment_trx_id) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['payment_trx_id'],
+        message: 'Enter the transaction ID',
+      });
+    } else if (!/^[A-Za-z0-9]{6,32}$/.test(value.payment_trx_id)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['payment_trx_id'],
+        message: 'Enter a valid transaction ID',
+      });
+    }
+  });
+
+export const couponCheckSchema = z.object({
+  items: cartItemsSchema,
+  district: z.string().trim().max(80).optional(),
+  coupon_code: z
     .string()
     .trim()
-    .min(8)
-    .max(100)
-    .regex(/^[A-Za-z0-9_-]+$/, 'Use letters, digits, dashes, or underscores'),
-  locale: z.enum(['bn', 'en']).default('bn'),
-  customer: customerSchema,
-  items: cartItemsSchema,
-  payment_method: z.literal('cod'),
-  turnstile_token: z.string().trim().max(2048).optional(),
+    .min(1)
+    .max(32)
+    .transform(normalizeCouponCode),
 });
 
 export const trackSchema = z.object({

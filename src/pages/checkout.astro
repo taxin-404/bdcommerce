@@ -55,6 +55,7 @@ const shopName = config.name[locale] || config.name.en;
     bnDigits={config.currency.bnDigits}
     geo={BD_GEO.divisions}
     turnstileSiteKey={turnstile.enabled ? turnstile.siteKey : ''}
-    codEnabled={config.payments.cod.enabled}
+    payments={config.payments}
+    couponsEnabled={config.features.coupons}
   />
 </StorefrontLayout>

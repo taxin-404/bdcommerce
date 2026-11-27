@@ -78,6 +78,9 @@ export function buildCheckoutFallback(input: {
       '',
       t(locale, 'checkout.fallbackSubtotal', { amount: money(priced.subtotal) }),
     );
+    if (priced.discount > 0) {
+      lines.push(t(locale, 'checkout.fallbackDiscount', { amount: money(priced.discount) }));
+    }
     if (priced.shipping_fee !== null) {
       lines.push(t(locale, 'checkout.fallbackDelivery', { amount: money(priced.shipping_fee) }));
     }

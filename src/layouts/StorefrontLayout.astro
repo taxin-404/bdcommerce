@@ -50,8 +50,14 @@ const socials = [
   <body class="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] antialiased">
     <header class="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
       <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3 sm:gap-x-5">
-        <a href="/" class="text-lg font-semibold text-[var(--color-primary)]">
-          {shopName}
+        <a
+          href="/"
+          class="flex items-center gap-2 text-lg font-semibold text-[var(--color-primary)]"
+        >
+          {config.logo && (
+            <img src={config.logo} alt="" class="h-8 w-auto max-w-32 object-contain" />
+          )}
+          <span>{shopName}</span>
         </a>
 
         <nav class="flex items-center gap-4 text-sm">

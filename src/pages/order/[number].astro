@@ -89,6 +89,11 @@ const paymentKeys: Record<string, string> = {
   paid: 'order.paymentPaid',
   refunded: 'order.paymentRefunded',
 };
+const paymentMethodKeys: Record<string, string> = {
+  cod: 'order.codLabel',
+  bkash: 'order.bkashLabel',
+  nagad: 'order.nagadLabel',
+};
 
 const order = result?.order ?? null;
 const title = order
@@ -190,10 +195,15 @@ const title = order
 
         <div class="card p-5 text-sm">
           <h2 class="text-lg font-semibold">{t(locale, 'order.payment')}</h2>
-          <p class="mt-2">{t(locale, 'order.codLabel')}</p>
+          <p class="mt-2">
+            {t(locale, paymentMethodKeys[order.payment_method] ?? 'order.payment')}
+          </p>
           <p class="text-muted">
             {t(locale, paymentKeys[order.payment_status] ?? 'order.paymentUnpaid')}
           </p>
+          {order.payment_status === 'pending_verification' && (
+            <p class="mt-2 text-sm">{t(locale, 'order.paymentVerifying')}</p>
+          )}
           <div class="mt-4 flex flex-wrap gap-2">
             <a href="/track" class="rounded-full border border-[var(--color-border)] px-4 py-2">
               {t(locale, 'order.trackOrder')}

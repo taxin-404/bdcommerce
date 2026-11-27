@@ -27,6 +27,7 @@ export interface CheckoutLineSnapshot {
 export type CheckoutFailure =
   | { ok: false; code: 'out_of_stock' }
   | { ok: false; code: 'idempotency_conflict' }
+  | { ok: false; code: 'coupon_unavailable' }
   | { ok: false; code: 'db_unavailable' };
 
 export type CheckoutResult =
@@ -39,6 +40,10 @@ function isDuplicateKeyError(message: string): boolean {
 
 function isGuardError(message: string): boolean {
   return /checkout_guard/i.test(message) && /CHECK constraint failed/i.test(message);
+}
+
+function isCouponGuardError(message: string): boolean {
+  return /coupon_guard/i.test(message) && /CHECK constraint failed/i.test(message);
 }
 
 function isNumberCollision(message: string): boolean {
@@ -59,14 +64,26 @@ export async function createCheckoutOrder(input: {
   customer: CheckoutCustomer;
   lines: CheckoutLineSnapshot[];
   subtotal: number;
+  discount?: number;
   shippingFee: number;
   total: number;
   number: string;
   requestHash: string;
+  paymentMethod?: 'cod' | 'bkash' | 'nagad';
+  paymentStatus?: 'unpaid' | 'pending_verification';
+  paymentSender?: string | null;
+  paymentTrxId?: string | null;
+  couponCode?: string | null;
   now?: string;
 }): Promise<CheckoutResult> {
   const { db, idempotencyKey, customer, lines } = input;
   const now = input.now ?? new Date().toISOString();
+  const discount = input.discount ?? 0;
+  const paymentMethod = input.paymentMethod ?? 'cod';
+  const paymentStatus = input.paymentStatus ?? 'unpaid';
+  const paymentSender = input.paymentSender ?? null;
+  const paymentTrxId = input.paymentTrxId ?? null;
+  const couponCode = input.couponCode ?? null;
 
   const tracked = lines.filter(
     (line): line is CheckoutLineSnapshot & { variant_id: number } =>
@@ -81,6 +98,31 @@ export async function createCheckoutOrder(input: {
 
   const buildStatements = (orderNumber: string): D1PreparedStatement[] => {
     const statements: D1PreparedStatement[] = [];
+
+    if (couponCode) {
+      // Atomic usage check: the UPDATE only matches while the coupon is still
+      // active, in its date window, and below max_uses. The guard fails the
+      // CHECK when it matched nothing, rolling back the order and stock too.
+      statements.push(
+        db
+          .prepare(
+            `UPDATE coupons
+                SET used = used + 1
+              WHERE code = ?
+                AND active = 1
+                AND min_subtotal <= ?
+                AND (max_uses IS NULL OR used < max_uses)
+                AND (starts_at IS NULL OR starts_at <= ?)
+                AND (ends_at IS NULL OR ends_at > ?)`,
+          )
+          .bind(couponCode, input.subtotal, now, now),
+      );
+      statements.push(
+        db.prepare(
+          'INSERT OR REPLACE INTO coupon_guard (id, ok) VALUES (1, changes() = 1)',
+        ),
+      );
+    }
 
     if (tracked.length) {
       statements.push(
@@ -118,8 +160,8 @@ export async function createCheckoutOrder(input: {
              consignment_id, tracking_code, ip_hash, idempotency_key, request_hash,
              created_at, updated_at
            ) VALUES (
-             ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL,
-             'cod', 'unpaid', NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?
+             ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+             ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?
            )`,
         )
         .bind(
@@ -133,8 +175,14 @@ export async function createCheckoutOrder(input: {
           customer.address,
           customer.note,
           input.subtotal,
+          discount,
           input.shippingFee,
           input.total,
+          couponCode,
+          paymentMethod,
+          paymentStatus,
+          paymentTrxId,
+          paymentSender,
           idempotencyKey,
           input.requestHash,
           now,
@@ -185,6 +233,18 @@ export async function createCheckoutOrder(input: {
   let orderNumber = input.number;
   const maxAttempts = 4;
 
+  const findExistingOrder = () =>
+    db
+      .prepare(
+        `SELECT id, number, status, phone, request_hash, subtotal, shipping_fee,
+                total, payment_method, payment_status, created_at
+           FROM orders
+          WHERE idempotency_key = ?
+          LIMIT 1`,
+      )
+      .bind(idempotencyKey)
+      .first<OrderSummaryRow>();
+
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       await db.batch(buildStatements(orderNumber));
@@ -200,16 +260,7 @@ export async function createCheckoutOrder(input: {
       }
 
       if (isDuplicateKeyError(message)) {
-        const existing = await db
-          .prepare(
-            `SELECT id, number, status, phone, request_hash, subtotal, shipping_fee,
-                    total, payment_method, payment_status, created_at
-               FROM orders
-              WHERE idempotency_key = ?
-              LIMIT 1`,
-          )
-          .bind(idempotencyKey)
-          .first<OrderSummaryRow>();
+        const existing = await findExistingOrder();
 
         if (
           existing &&
@@ -220,6 +271,21 @@ export async function createCheckoutOrder(input: {
         }
         if (existing) return { ok: false, code: 'idempotency_conflict' };
         throw error;
+      }
+
+      if (isCouponGuardError(message)) {
+        // A concurrent request with the same idempotency key may have just
+        // consumed the last use. Return that order instead of a false
+        // "coupon exhausted" error.
+        const existing = await findExistingOrder();
+        if (
+          existing &&
+          existing.phone === customer.phone &&
+          (!existing.request_hash || existing.request_hash === input.requestHash)
+        ) {
+          return { ok: true, order: existing, existing: true };
+        }
+        return { ok: false, code: 'coupon_unavailable' };
       }
 
       if (isGuardError(message)) {
@@ -245,8 +311,8 @@ export async function createCheckoutOrder(input: {
         subtotal: input.subtotal,
         shipping_fee: input.shippingFee,
         total: input.total,
-        payment_method: 'cod',
-        payment_status: 'unpaid',
+        payment_method: paymentMethod,
+        payment_status: paymentStatus,
         created_at: now,
       },
     };
