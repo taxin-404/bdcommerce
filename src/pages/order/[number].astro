@@ -1,0 +1,238 @@
+---
+import { env } from 'cloudflare:workers';
+import StorefrontLayout from '../../layouts/StorefrontLayout.astro';
+import { formatOrderAddress } from '../../lib/address';
+import { loadConfig, loadConfigFromRows } from '../../lib/config';
+import { formatDhakaDateTime } from '../../lib/datetime';
+import { t } from '../../lib/i18n';
+import { resolveLocale } from '../../lib/locale';
+import { formatBdt, toBanglaDigits } from '../../lib/money';
+import { findOrderForCustomer, ORDER_NUMBER_PATTERN } from '../../lib/orders';
+import { normalizePhone } from '../../lib/phone';
+import { countRoundTrips, logQueryCount } from '../../lib/query-log';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+
+const number = (Astro.params.number ?? '').toUpperCase();
+if (!ORDER_NUMBER_PATTERN.test(number)) return Astro.rewrite('/404');
+
+let phoneInput = '';
+let submitted = false;
+if (Astro.request.method === 'POST') {
+  submitted = true;
+  try {
+    const data = await Astro.request.formData();
+    phoneInput = String(data.get('phone') ?? '');
+  } catch {
+    phoneInput = '';
+  }
+}
+
+const { value: db, count } = countRoundTrips(env.DB);
+let config;
+let unavailable = false;
+try {
+  config = await loadConfig(db);
+} catch {
+  config = loadConfigFromRows([]);
+  unavailable = true;
+}
+const locale = resolveLocale(
+  config.locale.default,
+  config.locale.available,
+  requested,
+  Astro.cookies.get('locale')?.value,
+);
+
+let result: Awaited<ReturnType<typeof findOrderForCustomer>> = null;
+if (!unavailable) {
+  const normalizedPhone = phoneInput ? normalizePhone(phoneInput) : null;
+  if (normalizedPhone) {
+    try {
+      result = await findOrderForCustomer(db, number, normalizedPhone);
+    } catch {
+      unavailable = true;
+    }
+  }
+}
+logQueryCount('order', count());
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+const shopName = config.name[locale] || config.name.en;
+const qtyLabel = (qty: number) =>
+  config.currency.bnDigits ? toBanglaDigits(qty) : String(qty);
+const money = (amount: number) =>
+  formatBdt(amount, {
+    locale,
+    symbol: config.currency.symbol,
+    bnDigits: config.currency.bnDigits,
+  });
+
+const statusKeys: Record<string, string> = {
+  pending: 'order.statusPending',
+  confirmed: 'order.statusConfirmed',
+  shipped: 'order.statusShipped',
+  delivered: 'order.statusDelivered',
+  cancelled: 'order.statusCancelled',
+  returned: 'order.statusReturned',
+};
+const paymentKeys: Record<string, string> = {
+  unpaid: 'order.paymentUnpaid',
+  pending_verification: 'order.paymentPendingVerification',
+  paid: 'order.paymentPaid',
+  refunded: 'order.paymentRefunded',
+};
+
+const order = result?.order ?? null;
+const title = order
+  ? `${t(locale, 'order.confirmedTitle')} · ${order.number}`
+  : `${t(locale, 'order.title')} · ${number}`;
+---
+
+<StorefrontLayout title={`${title} · ${shopName}`} locale={locale} config={config}>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex" />
+    <meta name="referrer" content="no-referrer" />
+  </Fragment>
+
+  {unavailable ? (
+    <div class="card mx-auto max-w-md p-6 text-center">
+      <h1 class="text-xl font-semibold">{t(locale, 'errors.serviceUnavailable')}</h1>
+      <a href={`/order/${number}`} class="btn-primary mt-5 inline-block px-5 py-2 text-sm">
+        {t(locale, 'common.retry')}
+      </a>
+    </div>
+  ) : order && result ? (
+    <div class="mx-auto max-w-3xl">
+      <div class="card p-5">
+        <p class="badge-accent inline-block rounded-full px-3 py-1 text-xs font-semibold">
+          {t(locale, 'order.confirmedTitle')}
+        </p>
+        <h1 class="mt-2 text-2xl font-semibold">{t(locale, 'order.thankYou')}</h1>
+        <p class="mt-3 text-sm">
+          <span class="text-muted">{t(locale, 'order.orderNumber')}:</span>{' '}
+          <span class="font-mono font-semibold">{order.number}</span>
+        </p>
+        <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <span>
+            <span class="text-muted">{t(locale, 'order.status')}:</span>{' '}
+            {t(locale, statusKeys[order.status] ?? 'order.statusPending')}
+          </span>
+          <span>
+            <span class="text-muted">{t(locale, 'order.placedOn')}:</span>{' '}
+            {formatDhakaDateTime(order.created_at, locale)}
+          </span>
+        </div>
+      </div>
+
+      <section class="card mt-4 p-5">
+        <h2 class="text-lg font-semibold">{t(locale, 'order.items')}</h2>
+        <ul class="mt-3 divide-y divide-[var(--color-border)]">
+          {result.items.map((item) => (
+            <li class="flex justify-between gap-4 py-3 text-sm">
+              <span>
+                <span class="block font-medium">{item.title_snapshot}</span>
+                {item.variant_snapshot && (
+                  <span class="text-muted block text-xs">{item.variant_snapshot}</span>
+                )}
+                <span class="text-muted block text-xs">
+                  {money(item.unit_price)} × {qtyLabel(item.qty)}
+                </span>
+              </span>
+              <span class="shrink-0 font-medium">{money(item.line_total)}</span>
+            </li>
+          ))}
+        </ul>
+
+        <dl class="mt-3 space-y-1 border-t border-[var(--color-border)] pt-3 text-sm">
+          <div class="flex justify-between">
+            <dt class="text-muted">{t(locale, 'order.subtotal')}</dt>
+            <dd>{money(order.subtotal)}</dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-muted">{t(locale, 'order.shipping')}</dt>
+            <dd>{money(order.shipping_fee)}</dd>
+          </div>
+          {order.discount > 0 && (
+            <div class="flex justify-between">
+              <dt class="text-muted">{t(locale, 'order.discount')}</dt>
+              <dd>-{money(order.discount)}</dd>
+            </div>
+          )}
+          <div class="flex justify-between border-t border-[var(--color-border)] pt-2 text-base font-semibold">
+            <dt>{t(locale, 'order.total')}</dt>
+            <dd>{money(order.total)}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="mt-4 grid gap-4 sm:grid-cols-2">
+        <div class="card p-5 text-sm">
+          <h2 class="text-lg font-semibold">{t(locale, 'order.delivery')}</h2>
+          <p class="mt-2 font-medium">{order.customer_name}</p>
+          <p class="text-muted">{formatOrderAddress(order)}</p>
+          <p class="mt-2">
+            <span class="text-muted">{t(locale, 'order.phone')}:</span> {order.phone}
+          </p>
+          {order.note && (
+            <p class="mt-2">
+              <span class="text-muted">{t(locale, 'order.note')}:</span> {order.note}
+            </p>
+          )}
+        </div>
+
+        <div class="card p-5 text-sm">
+          <h2 class="text-lg font-semibold">{t(locale, 'order.payment')}</h2>
+          <p class="mt-2">{t(locale, 'order.codLabel')}</p>
+          <p class="text-muted">
+            {t(locale, paymentKeys[order.payment_status] ?? 'order.paymentUnpaid')}
+          </p>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <a href="/track" class="rounded-full border border-[var(--color-border)] px-4 py-2">
+              {t(locale, 'order.trackOrder')}
+            </a>
+            <a href="/shop" class="btn-primary px-4 py-2">
+              {t(locale, 'order.shopMore')}
+            </a>
+          </div>
+        </div>
+      </section>
+    </div>
+  ) : (
+    <div class="card mx-auto max-w-md p-6">
+      <h1 class="text-xl font-semibold">{t(locale, 'order.verifyTitle')}</h1>
+      <p class="text-muted mt-2 text-sm">{t(locale, 'order.verifyText')}</p>
+      {submitted && (
+        <p class="mt-3 text-sm" role="alert" style="color:#be123c">
+          {t(locale, 'order.notFoundText')}
+        </p>
+      )}
+      <form method="post" class="mt-4 flex gap-2">
+        <label class="sr-only" for="order-phone">
+          {t(locale, 'order.phone')}
+        </label>
+        <input
+          id="order-phone"
+          name="phone"
+          type="tel"
+          inputmode="tel"
+          autocomplete="tel"
+          required
+          value={phoneInput}
+          placeholder={t(locale, 'checkout.phoneHint')}
+          class="min-w-0 flex-1 rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+        />
+        <button type="submit" class="btn-primary px-4 py-2 text-sm">
+          {t(locale, 'order.viewOrder')}
+        </button>
+      </form>
+    </div>
+  )}
+</StorefrontLayout>

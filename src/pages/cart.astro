@@ -1,0 +1,54 @@
+---
+import { env } from 'cloudflare:workers';
+import StorefrontLayout from '../layouts/StorefrontLayout.astro';
+import CartPage from '../components/cart/CartPage';
+import { t } from '../lib/i18n';
+import { resolveLocale } from '../lib/locale';
+import { countRoundTrips, logQueryCount } from '../lib/query-log';
+import { loadConfig, loadConfigFromRows } from '../lib/config';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+
+const { value: db, count } = countRoundTrips(env.DB);
+let config;
+try {
+  config = await loadConfig(db);
+} catch {
+  config = loadConfigFromRows([]);
+}
+const locale = resolveLocale(
+  config.locale.default,
+  config.locale.available,
+  requested,
+  Astro.cookies.get('locale')?.value,
+);
+logQueryCount('cart', count());
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+const shopName = config.name[locale] || config.name.en;
+---
+
+<StorefrontLayout
+  title={`${t(locale, 'cart.title')} · ${shopName}`}
+  description={t(locale, 'cart.emptyText')}
+  locale={locale}
+  config={config}
+>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex" />
+  </Fragment>
+
+  <CartPage
+    client:load
+    locale={locale}
+    symbol={config.currency.symbol}
+    bnDigits={config.currency.bnDigits}
+  />
+</StorefrontLayout>

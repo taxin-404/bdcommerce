@@ -18,6 +18,25 @@ At the end of every phase, the agent appends its rulings here under a new headin
 - Query budgets: home 4, shop 3, product 4.
 - Server-side re-pricing is Phase 4's job. The product page only shows the selected variant's price.
 
+## Phase 4 — cart, checkout, COD orders
+- Prices, line totals, shipping, and order totals are always recomputed from D1. The client supplies only product id, variant id, and quantity; price/total fields are stripped by Zod and ignored. An unsafe (non-safe-integer) line total marks the line unavailable, and admin prices are capped at 1,000,000,000 BDT.
+- A line uses `variant.price` when it is not null, otherwise the product price. Out-of-stock, inactive, missing, and variant-required lines are marked unavailable and block order creation.
+- Delivery zone is derived from the district: Dhaka district → `dhaka`, every other district → `outside`, with the first/last configured zone as a fallback. `freeShippingOver` is applied server-side. There is no client-supplied shipping fee.
+- COD is the only accepted payment method in Phase 4; bKash/Nagad and coupons are deferred.
+- Products with no variants, and products with `track_stock = 0`, are orderable without stock checks or decrements. Tracked variants require a variant id and use the selected variant's stock.
+- One `db.batch` contains the stock update, guard, order, items, and event rows. The stock update is a single `UPDATE ... WHERE stock >= qty` fed by one JSON parameter (`json_each`), so a 50-line cart stays under D1's 100-bound-parameter limit. A one-row `checkout_guard` CHECK compares `changes()` with the expected tracked-line count, so D1 rolls back the whole order if any line was short. Measured on real local D1: 50 concurrent orders for stock 5 produced exactly 5 orders, stock 0, and 45 409s; a 30-line order succeeded.
+- Every checkout requires `idempotency_key`. The route checks it before pricing; a repeat returns the same order (200) without pricing or writing. `orders.request_hash` stores a SHA-256 fingerprint of the customer, geo, items, and payment method: a repeated key with a different intent gets 409 instead of silently returning the old delivery details. A concurrent UNIQUE race re-reads the winner and returns it when the intent matches. The client keeps one key per cart signature and rotates it when the cart, phone, or address changes.
+- `order_items` snapshots the localized product title and the variant title with its options. `variant_id` and `product_id` stay as references for admin views.
+- Turnstile runs only when both keys are configured. An invalid/missing token fails the checkout; Siteverify 5xx/429/network errors and `internal-error` responses fail open with a warning, while 4xx configuration errors and `bad-request` fail closed and log loudly. `.dev.vars.example` lists Cloudflare's official test keys in comments; no test keys are hardcoded in application code.
+- `src/data/bd-geo.json` comes from the MIT `nuhil/bangladesh-geocode` dataset (8 divisions, 64 districts, 495 upazilas). The checker validates the full hierarchy server-side; the generator is `scripts/generate-bd-geo.mjs`.
+- `/order/[number]` and `/track` require order number + phone, are read-only, send `Cache-Control: no-store`, and are `noindex`. `/track` uses POST. The checkout island submits the confirmation as a one-time POST form, so the phone number never enters the URL or browser history.
+- If D1 fails during order creation, the API returns a 503 with a prefilled fallback message and configured Messenger/WhatsApp/tel links; it never returns a raw error. Cart/checkout/order/track pages fall back to the default config when the settings read fails, and order/track show a friendly unavailable card instead of a raw 500.
+- D1 errors are classified before the outage heuristic: constraint failures (`UNIQUE`, `CHECK`) are not treated as outages, so idempotent retries return the existing order and guard failures return out-of-stock. A rare `orders.number` UNIQUE collision retries up to 4 times with a fresh number inside the same service; the failed batch rolls back.
+- Query counts (dev instrumentation, D1 round trips): checkout 4 for a new order and 2 for an idempotent retry; cart price 2; cart and checkout pages 1; order and track pages 3.
+- Supersedes the Phase 3 "no JS framework on the storefront" ruling: the mini-cart, add-to-cart, cart page, and checkout use small Preact islands; catalog pages still ship only their small inline scripts.
+- The client stores one idempotency key per cart signature. Retrying an unchanged cart reuses the key; changing the cart rotates it, so a lost response cannot make the client clear a new cart while returning an old order.
+- Physical browser pass at 390 px: the header search moves to a full-width second row, and the confirmation page deduplicates locality names already present in the street address (for example "House 12, Road 5, Savar" + upazila Savar).
+
 ## Phase 1–2
 
 ### Phase 1 — schema, config, seed

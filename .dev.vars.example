@@ -5,5 +5,15 @@
 # separate SESSION_SECRET.
 ADMIN_PASSPHRASE=
 
-# Optional secrets for later phases (Turnstile, courier, Facebook CAPI) will be
-# documented here when those integrations are added.
+# Optional. Turnstile is enforced only when both keys are set. Leave both blank
+# to disable it (the default). To try Turnstile locally, copy these official
+# always-pass Cloudflare test keys into your git-ignored .dev.vars — never use
+# them in production:
+#   TURNSTILE_SITE_KEY=1x00000000000000000000AA
+#   TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+# Docs: https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET_KEY=
+
+# Optional secrets for later phases (courier, Facebook CAPI) will be documented
+# here when those integrations are added.
