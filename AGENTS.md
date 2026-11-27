@@ -1,6 +1,6 @@
 # AGENTS.md — BD Commerce Template
 
-Read this file first in every session. Then read `PLAN.md` and work on **one phase at a time**.
+Read this file first in every session. Then read `doc/PLAN.md` and work on **one phase at a time**.
 
 ## Repository
 
@@ -122,7 +122,9 @@ pnpm run deploy          # remote D1 migrations + wrangler deploy (use `run`: pl
 
 ## Workflow rules for the agent
 
-- Work on **one phase** of `PLAN.md` per session. Do not start the next phase unless asked.
+- Read `AGENTS.md`, then `doc/PLAN.md`, `doc/DECISIONS.md` and `doc/BACKLOG.md` at the start of every session. Do not change anything recorded in `DECISIONS.md` without asking me.
+- At the end of every phase, append your rulings to `doc/DECISIONS.md` and your deferred items to `doc/BACKLOG.md`, each tagged with the phase that should handle it. Delete backlog items you finished. Put ideas that are not in the current phase in `doc/IDEAS.md`.
+- Work on **one phase** of `doc/PLAN.md` per session. Do not start the next phase unless asked.
 - **Wrangler safety:** never run a remote or destructive Wrangler command (`deploy`, `delete`, `secret`, `login`/`logout`, R2 remote, or anything with `--remote`) unless the human explicitly asks. Use local D1/R2 for development and verification.
 - Start by stating a short plan, then implement. Prefer small, reviewable diffs.
 - After each phase: run `pnpm typecheck && pnpm test && pnpm build`, fix errors, then summarize what changed and
