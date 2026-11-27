@@ -222,6 +222,37 @@ export function insertSetting(sqlite: DatabaseSync, key: string, value: unknown)
     .run(key, JSON.stringify(value));
 }
 
+export interface CouponFixture {
+  code: string;
+  type?: 'percent' | 'fixed';
+  value?: number;
+  minSubtotal?: number;
+  maxUses?: number | null;
+  used?: number;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  active?: boolean;
+}
+
+export function insertCoupon(sqlite: DatabaseSync, coupon: CouponFixture): void {
+  sqlite
+    .prepare(
+      `INSERT INTO coupons (code, type, value, min_subtotal, max_uses, used, starts_at, ends_at, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      coupon.code,
+      coupon.type ?? 'percent',
+      coupon.value ?? 10,
+      coupon.minSubtotal ?? 0,
+      coupon.maxUses ?? null,
+      coupon.used ?? 0,
+      coupon.startsAt ?? null,
+      coupon.endsAt ?? null,
+      coupon.active === false ? 0 : 1,
+    );
+}
+
 export function countRows(sqlite: DatabaseSync, table: string): number {
   const row = sqlite
     .prepare(`SELECT COUNT(*) AS count FROM ${table}`)

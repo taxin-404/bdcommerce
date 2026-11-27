@@ -45,7 +45,7 @@ const sectionSchema = z.object({
   items: z.array(itemSchema).max(12).optional(),
 });
 
-const homeSectionsSchema = z.array(sectionSchema).min(1).max(20);
+export const homeSectionsSchema = z.array(sectionSchema).min(1).max(20);
 
 export type HomeSection = z.infer<typeof sectionSchema>;
 export type LocalizedText = z.infer<typeof localizedSchema>;
@@ -62,9 +62,20 @@ export function parseHomeSections(raw: string | undefined): HomeSection[] {
   if (!raw) return DEFAULT_HOME_SECTIONS.map((section) => ({ ...section }));
 
   try {
-    const parsed = homeSectionsSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) return DEFAULT_HOME_SECTIONS.map((section) => ({ ...section }));
-    return parsed.data;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return DEFAULT_HOME_SECTIONS.map((section) => ({ ...section }));
+    }
+
+    // Validate each section independently so one bad entry does not wipe the
+    // owner's whole homepage layout.
+    const sections = parsed
+      .map((section) => sectionSchema.safeParse(section))
+      .filter((result) => result.success)
+      .map((result) => result.data)
+      .slice(0, 20);
+
+    return sections.length ? sections : DEFAULT_HOME_SECTIONS.map((section) => ({ ...section }));
   } catch {
     return DEFAULT_HOME_SECTIONS.map((section) => ({ ...section }));
   }

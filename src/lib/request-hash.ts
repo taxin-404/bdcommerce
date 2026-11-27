@@ -13,6 +13,9 @@ export interface CheckoutRequestIntent {
   };
   items: readonly CartLineInput[];
   paymentMethod: string;
+  paymentSender?: string | null;
+  paymentTrxId?: string | null;
+  couponCode?: string | null;
 }
 
 function hex(buffer: ArrayBuffer): string {
@@ -50,6 +53,11 @@ export async function checkoutRequestHash(input: CheckoutRequestIntent): Promise
         qty: item.qty,
       })),
     payment_method: input.paymentMethod,
+    // Keep the pre-Phase-6 hash stable for plain COD retries; only add the
+    // new fields when they carry a value.
+    ...(input.paymentSender ? { payment_sender: input.paymentSender } : {}),
+    ...(input.paymentTrxId ? { payment_trx_id: input.paymentTrxId } : {}),
+    ...(input.couponCode ? { coupon_code: input.couponCode } : {}),
   });
 
   return hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical)));

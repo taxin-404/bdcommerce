@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import defaultConfig from '../../site.config';
 
-const localizedTextSchema = z.object({
+export const localizedTextSchema = z.object({
   en: z.string(),
   bn: z.string(),
 });
 
-const safePathOrUrl = z
+export const safePathOrUrl = z
   .string()
   .refine(
     (value) =>
@@ -18,7 +18,7 @@ const safePathOrUrl = z
     'Expected a site-relative path or an http(s) URL',
   );
 
-const themePresetSchema = z.enum(['clean', 'bold', 'soft', 'dark']);
+export const themePresetSchema = z.enum(['clean', 'bold', 'soft', 'dark']);
 
 const themeSchema = z.object({
   preset: themePresetSchema.default('clean'),

@@ -67,6 +67,10 @@ export interface CheckoutIntent {
   upazila: string;
   address: string;
   note: string;
+  paymentMethod?: string;
+  paymentSender?: string;
+  paymentTrxId?: string;
+  couponCode?: string;
 }
 
 /** Changing the cart, phone, or address is a new order intent. */
@@ -81,5 +85,9 @@ export function checkoutIntentSignature(input: CheckoutIntent): string {
     input.upazila,
     input.address.trim(),
     input.note.trim(),
+    input.paymentMethod ?? '',
+    input.paymentSender ?? '',
+    input.paymentTrxId ?? '',
+    input.couponCode ?? '',
   ].join('|');
 }

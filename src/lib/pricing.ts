@@ -1,5 +1,12 @@
 import type { CartLineInput } from './cart';
 import type { SiteConfig } from './config';
+import {
+  evaluateCoupon,
+  normalizeCouponCode,
+  type AppliedCoupon,
+  type CouponErrorCode,
+  type CouponRow,
+} from './coupons';
 import { shippingZoneForDistrict } from './geo';
 
 export type LineUnavailableReason =
@@ -30,12 +37,19 @@ export interface PricedCart {
   lines: PricedLine[];
   subtotal: number;
   discount: number;
+  coupon: AppliedCoupon | null;
+  coupon_error: CouponErrorCode | null;
   shipping_zone: string | null;
   shipping_zone_label: { en: string; bn: string } | null;
   shipping_fee: number | null;
   total: number;
   free_shipping: boolean;
   all_available: boolean;
+}
+
+export interface PriceCartOptions {
+  couponCode?: string | null;
+  now?: string;
 }
 
 interface ProductRow {
@@ -87,6 +101,7 @@ export async function priceCart(
   items: readonly CartLineInput[],
   config: SiteConfig,
   district?: string,
+  options: PriceCartOptions = {},
 ): Promise<PricedCart> {
   const productIds = [...new Set(items.map((item) => item.product_id))];
   const variantIds = [
@@ -94,6 +109,8 @@ export async function priceCart(
       items.flatMap((item) => (item.variant_id === null ? [] : [item.variant_id])),
     ),
   ];
+  const couponCode = options.couponCode ? normalizeCouponCode(options.couponCode) : null;
+  const now = options.now ?? new Date().toISOString();
 
   const productStatement = db
     .prepare(
@@ -107,7 +124,11 @@ export async function priceCart(
     .bind(...productIds);
 
   const statements = [productStatement];
+  let variantIndex = -1;
+  let couponIndex = -1;
+
   if (variantIds.length) {
+    variantIndex = statements.length;
     statements.push(
       db
         .prepare(
@@ -119,9 +140,28 @@ export async function priceCart(
     );
   }
 
+  if (couponCode) {
+    couponIndex = statements.length;
+    statements.push(
+      db
+        .prepare(
+          `SELECT code, type, value, min_subtotal, max_uses, used, starts_at,
+                  ends_at, active
+             FROM coupons
+            WHERE code = ?
+            LIMIT 1`,
+        )
+        .bind(couponCode),
+    );
+  }
+
   const results = await db.batch(statements);
   const products = (results[0]?.results ?? []) as ProductRow[];
-  const variants = (variantIds.length ? (results[1]?.results ?? []) : []) as VariantRow[];
+  const variants = (variantIndex >= 0 ? (results[variantIndex]?.results ?? []) : []) as VariantRow[];
+  const couponRow =
+    couponIndex >= 0
+      ? ((results[couponIndex]?.results?.[0] ?? null) as CouponRow | null)
+      : null;
 
   const productById = new Map(products.map((product) => [product.id, product]));
   const variantById = new Map(variants.map((variant) => [variant.id, variant]));
@@ -194,6 +234,19 @@ export async function priceCart(
   const rawSubtotal = availableLines.reduce((total, line) => total + line.line_total, 0);
   const subtotal = Number.isSafeInteger(rawSubtotal) ? rawSubtotal : 0;
 
+  let appliedCoupon: AppliedCoupon | null = null;
+  let couponError: CouponErrorCode | null = null;
+  if (couponCode) {
+    if (!config.features.coupons) {
+      couponError = 'coupon_inactive';
+    } else {
+      const evaluation = evaluateCoupon(couponRow, subtotal, now);
+      if (evaluation.ok) appliedCoupon = evaluation.coupon;
+      else couponError = evaluation.code;
+    }
+  }
+  const discount = appliedCoupon?.discount ?? 0;
+
   let shippingZone: SiteConfig['shipping']['zones'][number] | null = null;
   let freeShipping = false;
   let shippingFee: number | null = null;
@@ -206,14 +259,19 @@ export async function priceCart(
     shippingFee = freeShipping ? 0 : shippingZone.fee;
   }
 
-  const rawTotal = subtotal + (shippingFee ?? 0);
-  const total = Number.isSafeInteger(rawTotal) ? rawTotal : 0;
-  const moneySafe = Number.isSafeInteger(rawSubtotal) && Number.isSafeInteger(rawTotal);
+  const rawTotal = subtotal - discount + (shippingFee ?? 0);
+  const total = Number.isSafeInteger(rawTotal) && rawTotal >= 0 ? rawTotal : 0;
+  const moneySafe =
+    Number.isSafeInteger(rawSubtotal) &&
+    Number.isSafeInteger(rawTotal) &&
+    Number.isSafeInteger(discount);
 
   return {
     lines,
     subtotal,
-    discount: 0,
+    discount,
+    coupon: appliedCoupon,
+    coupon_error: couponError,
     shipping_zone: shippingZone?.id ?? null,
     shipping_zone_label: shippingZone?.label ?? null,
     shipping_fee: shippingFee,

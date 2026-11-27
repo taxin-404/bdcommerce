@@ -43,7 +43,13 @@ const money = (amount: number) =>
     bnDigits: config.currency.bnDigits,
   });
 
-const eventTypes = new Set<string>(['created', ...ORDER_STATUSES]);
+const eventTypes = new Set<string>([
+  'created',
+  'payment_verified',
+  'payment_rejected',
+  'payment_refunded',
+  ...ORDER_STATUSES,
+]);
 
 const statusClass: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-900',
@@ -215,6 +221,64 @@ const localeQuery = `?lang=${locale}`;
               )}
             </div>
 
+            {(order.payment_method === 'bkash' || order.payment_method === 'nagad') && (
+              <div class="rounded-xl bg-white p-4 shadow-sm">
+                <h2 class="text-sm font-semibold text-slate-600">
+                  {t(locale, 'admin.order.paymentVerification')}
+                </h2>
+                <dl class="mt-2 space-y-1 text-sm">
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-slate-500">{t(locale, 'admin.order.paymentSender')}</dt>
+                    <dd class="font-mono">{order.payment_sender ?? '—'}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-slate-500">{t(locale, 'admin.order.paymentTrx')}</dt>
+                    <dd class="font-mono break-all">{order.payment_trx_id ?? '—'}</dd>
+                  </div>
+                  <div class="flex justify-between gap-2">
+                    <dt class="text-slate-500">{t(locale, 'admin.order.total')}</dt>
+                    <dd>{money(order.total)}</dd>
+                  </div>
+                </dl>
+                {order.payment_status === 'pending_verification' && (
+                  <div class="mt-3 grid gap-2">
+                    <button
+                      type="button"
+                      class="js-payment rounded bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                      data-action="verify"
+                      data-order-id={order.id}
+                      data-confirm={t(locale, 'admin.order.verifyConfirm')}
+                      data-failed={t(locale, 'admin.order.paymentFailed')}
+                    >
+                      {t(locale, 'admin.order.verifyPayment')}
+                    </button>
+                    <button
+                      type="button"
+                      class="js-payment rounded border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
+                      data-action="reject"
+                      data-order-id={order.id}
+                      data-confirm={t(locale, 'admin.order.rejectConfirm')}
+                      data-failed={t(locale, 'admin.order.paymentFailed')}
+                    >
+                      {t(locale, 'admin.order.rejectPayment')}
+                    </button>
+                  </div>
+                )}
+                {order.payment_status === 'paid' && (
+                  <button
+                    type="button"
+                    class="js-payment mt-3 w-full rounded border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
+                    data-action="reject"
+                    data-order-id={order.id}
+                    data-confirm={t(locale, 'admin.order.refundConfirm')}
+                    data-failed={t(locale, 'admin.order.paymentFailed')}
+                  >
+                    {t(locale, 'admin.order.refundPayment')}
+                  </button>
+                )}
+              </div>
+            )}
+
             <div class="rounded-xl bg-white p-4 shadow-sm">
               <h2 class="text-sm font-semibold text-slate-600">
                 {t(locale, 'admin.order.actions')}
@@ -286,6 +350,40 @@ const localeQuery = `?lang=${locale}`;
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ status: button.dataset.status }),
         });
+        const payload = (await response.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: { code?: string };
+        } | null;
+
+        if (!response.ok || !payload?.ok) {
+          window.alert(adminErrorMessage(payload?.error?.code, button.dataset.failed ?? ''));
+          button.disabled = false;
+          return;
+        }
+
+        window.location.reload();
+      } catch {
+        window.alert(button.dataset.failed ?? '');
+        button.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.js-payment').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!window.confirm(button.dataset.confirm ?? '')) return;
+      button.disabled = true;
+
+      try {
+        const response = await fetch(
+          `/api/admin/orders/${button.dataset.orderId}/payment`,
+          {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: button.dataset.action }),
+          },
+        );
         const payload = (await response.json().catch(() => null)) as {
           ok?: boolean;
           error?: { code?: string };

@@ -183,13 +183,6 @@ export default function CheckoutFields({
 
       <section class="card p-4">
         <h2 class="text-lg font-semibold">{t(locale, 'checkout.payment')}</h2>
-        <label class="mt-3 flex items-start gap-2 text-sm">
-          <input type="radio" checked readOnly class="mt-1" />
-          <span>
-            <span class="block font-medium">{t(locale, 'checkout.cod')}</span>
-            <span class="text-muted block">{t(locale, 'checkout.codHint')}</span>
-          </span>
-        </label>
         {children}
       </section>
     </>

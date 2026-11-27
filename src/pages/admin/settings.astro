@@ -1,0 +1,287 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import PresetPicker from '../../components/admin/PresetPicker.astro';
+import { resolveAdminLocale } from '../../lib/admin-locale';
+import { loadAdminSettings } from '../../lib/admin-settings';
+import { t } from '../../lib/i18n';
+import { countRoundTrips, logQueryCount } from '../../lib/query-log';
+import { SECTION_TYPES, type SectionType } from '../../lib/sections';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('admin_locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+
+const { value: db, count } = countRoundTrips(env.DB);
+const { config, sections } = await loadAdminSettings(db);
+logQueryCount('admin/settings', count());
+
+const inputClass =
+  'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-200';
+const labelClass = 'text-sm';
+const fieldLabel = 'mb-1 block font-medium';
+const presetOptions = ['clean', 'bold', 'soft', 'dark'] as const;
+const missingSections = SECTION_TYPES.filter(
+  (type) => !sections.some((section) => section.type === type),
+);
+const sectionLabel = (type: SectionType) => t(locale, `admin.settings.sectionTypes.${type}`);
+const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
+---
+
+<AdminLayout title={t(locale, 'admin.settings.title')} locale={locale} current="settings">
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold">{t(locale, 'admin.settings.title')}</h1>
+      <p class="mt-1 text-sm text-slate-500">{t(locale, 'admin.settings.hint')}</p>
+    </div>
+    <a
+      href="/admin/setup"
+      class="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+    >
+      {t(locale, 'admin.settings.openSetup')}
+    </a>
+  </div>
+
+  <form
+    id="settings-form"
+    class="space-y-4"
+    data-failed={t(locale, 'admin.settings.saveFailed')}
+    data-saved={t(locale, 'admin.settings.saved')}
+    data-remove={t(locale, 'admin.settings.removeSection')}
+    data-sections-required={t(locale, 'admin.settings.sectionsRequired')}
+  >
+    <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.business')}</h2>
+      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+        <label class={labelClass}>
+          <span class={fieldLabel}>{t(locale, 'admin.settings.nameEn')}</span>
+          <input name="name_en" required value={config.name.en} class={inputClass} />
+        </label>
+        <label class={labelClass}>
+          <span class={fieldLabel}>{t(locale, 'admin.settings.nameBn')}</span>
+          <input name="name_bn" required value={config.name.bn} class={inputClass} />
+        </label>
+        <label class={labelClass}>
+          <span class={fieldLabel}>{t(locale, 'admin.settings.taglineEn')}</span>
+          <input name="tagline_en" value={config.tagline.en} class={inputClass} />
+        </label>
+        <label class={labelClass}>
+          <span class={fieldLabel}>{t(locale, 'admin.settings.taglineBn')}</span>
+          <input name="tagline_bn" value={config.tagline.bn} class={inputClass} />
+        </label>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        {config.logo && <img id="logo-preview" src={config.logo} alt="" class="h-12 w-auto rounded border border-slate-200" />}
+        <input id="logo-file" type="file" accept="image/*" class="text-sm" />
+        <button
+          id="logo-upload"
+          type="button"
+          class="rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
+          data-uploading={t(locale, 'admin.settings.logoUploading')}
+          data-failed={t(locale, 'admin.settings.logoFailed')}
+        >
+          {t(locale, 'admin.settings.uploadLogo')}
+        </button>
+        <input id="logo-value" name="logo" type="hidden" value={config.logo} />
+        <p id="logo-status" class="hidden text-sm" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.theme')}</h2>
+      <label class="mt-3 block max-w-xs text-sm">
+        <span class={fieldLabel}>{t(locale, 'admin.settings.themePreset')}</span>
+        <select id="theme-preset" class={inputClass}>
+          {presetOptions.map((preset) => (
+            <option value={preset} selected={config.theme.preset === preset}>
+              {t(locale, `admin.settings.presets.${preset}`)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <script type="application/json" id="theme-json" set:html={themeJson}></script>
+    </section>
+
+    <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.shipping')}</h2>
+      <div class="mt-3 space-y-3">
+        {config.shipping.zones.map((zone) => (
+          <div class="grid gap-3 sm:grid-cols-3" data-zone-id={zone.id}>
+            <label class={labelClass}>
+              <span class={fieldLabel}>{t(locale, 'admin.settings.zoneLabelEn')}</span>
+              <input class={`${inputClass} js-zone-label-en`} value={zone.label.en} />
+            </label>
+            <label class={labelClass}>
+              <span class={fieldLabel}>{t(locale, 'admin.settings.zoneLabelBn')}</span>
+              <input class={`${inputClass} js-zone-label-bn`} value={zone.label.bn} />
+            </label>
+            <label class={labelClass}>
+              <span class={fieldLabel}>{t(locale, 'admin.settings.zoneFee')}</span>
+              <input
+                class={`${inputClass} js-zone-fee`}
+                type="number"
+                min="0"
+                value={zone.fee}
+              />
+            </label>
+          </div>
+        ))}
+        <label class="block max-w-xs text-sm">
+          <span class={fieldLabel}>{t(locale, 'admin.settings.freeShippingOver')}</span>
+          <input
+            name="free_shipping_over"
+            type="number"
+            min="0"
+            value={config.shipping.freeShippingOver ?? ''}
+            class={inputClass}
+          />
+        </label>
+      </div>
+    </section>
+
+    <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.payments')}</h2>
+      <div class="mt-3 grid gap-4 sm:grid-cols-3">
+        <label class="flex items-center gap-2 text-sm">
+          <input id="cod-enabled" type="checkbox" checked={config.payments.cod.enabled} />
+          <span>{t(locale, 'admin.settings.cod')}</span>
+        </label>
+        {(['bkash', 'nagad'] as const).map((wallet) => (
+          <div class="rounded-lg border border-slate-200 p-3" data-wallet={wallet}>
+            <label class="flex items-center gap-2 text-sm font-medium">
+              <input
+                class="js-wallet-enabled"
+                type="checkbox"
+                checked={config.payments[wallet].enabled}
+              />
+              <span>{t(locale, `admin.settings.${wallet}`)}</span>
+            </label>
+            <label class="mt-2 block text-sm">
+              <span class={fieldLabel}>{t(locale, 'admin.settings.walletNumber')}</span>
+              <input class={`${inputClass} js-wallet-number`} value={config.payments[wallet].number} />
+            </label>
+            <label class="mt-2 block text-sm">
+              <span class={fieldLabel}>{t(locale, 'admin.settings.walletType')}</span>
+              <select class={`${inputClass} js-wallet-type`}>
+                <option value="personal" selected={config.payments[wallet].type === 'personal'}>
+                  {t(locale, 'admin.settings.personal')}
+                </option>
+                <option value="merchant" selected={config.payments[wallet].type === 'merchant'}>
+                  {t(locale, 'admin.settings.merchant')}
+                </option>
+              </select>
+            </label>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.contact')}</h2>
+      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+        <label class={labelClass}>
+          <span class={fieldLabel}>{t(locale, 'admin.settings.phone')}</span>
+          <input name="contact_phone" value={config.contact.phone} class={inputClass} />
+        </label>
+        <label class={labelClass}>
+          <span class={fieldLabel}>{t(locale, 'admin.settings.email')}</span>
+          <input name="contact_email" type="email" value={config.contact.email} class={inputClass} />
+        </label>
+        <label class={labelClass}>
+          <span class={fieldLabel}>{t(locale, 'admin.settings.addressEn')}</span>
+          <input name="address_en" value={config.contact.address.en} class={inputClass} />
+        </label>
+        <label class={labelClass}>
+          <span class={fieldLabel}>{t(locale, 'admin.settings.addressBn')}</span>
+          <input name="address_bn" value={config.contact.address.bn} class={inputClass} />
+        </label>
+      </div>
+    </section>
+
+    <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.social')}</h2>
+      <div class="mt-3 grid gap-3 sm:grid-cols-2">
+        {(['facebook', 'messenger', 'whatsapp', 'instagram'] as const).map((network) => (
+          <label class={labelClass}>
+            <span class={fieldLabel}>{t(locale, `admin.settings.${network}`)}</span>
+            <input name={`social_${network}`} value={config.social[network]} class={inputClass} />
+          </label>
+        ))}
+      </div>
+    </section>
+
+    <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.sections')}</h2>
+      <p class="mt-1 text-sm text-slate-500">{t(locale, 'admin.settings.sectionsHint')}</p>
+      <ul id="section-list" class="mt-3 space-y-2">
+        {sections.map((section, index) => (
+          <li
+            class="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 px-3 py-2"
+            data-section={JSON.stringify(section)}
+          >
+            <span class="text-sm font-medium">{sectionLabel(section.type)}</span>
+            <span class="flex gap-1">
+              <button type="button" class="js-section-up rounded border px-2 py-1 text-xs" disabled={index === 0}>
+                ↑
+              </button>
+              <button
+                type="button"
+                class="js-section-down rounded border px-2 py-1 text-xs"
+                disabled={index === sections.length - 1}
+              >
+                ↓
+              </button>
+              <button type="button" class="js-section-remove rounded border border-rose-300 px-2 py-1 text-xs text-rose-700">
+                {t(locale, 'admin.settings.removeSection')}
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div class="mt-3 flex flex-wrap items-end gap-2">
+        <label class="text-sm">
+          <span class={fieldLabel}>{t(locale, 'admin.settings.addSection')}</span>
+          <select id="section-add" class={inputClass}>
+            {missingSections.map((type) => (
+              <option value={type}>{sectionLabel(type)}</option>
+            ))}
+          </select>
+        </label>
+        <button
+          id="section-add-button"
+          type="button"
+          class="rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
+          disabled={missingSections.length === 0}
+        >
+          {t(locale, 'admin.settings.addSectionButton')}
+        </button>
+      </div>
+    </section>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <button
+        type="submit"
+        class="rounded bg-teal-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-teal-800"
+      >
+        {t(locale, 'admin.settings.save')}
+      </button>
+      <p id="settings-status" class="hidden text-sm" aria-live="polite"></p>
+    </div>
+  </form>
+
+  <div class="mt-4">
+    <PresetPicker locale={locale} />
+  </div>
+</AdminLayout>
+
+
+<script>
+  import '../../scripts/admin-settings-form';
+</script>

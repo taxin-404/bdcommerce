@@ -15,13 +15,16 @@ import {
   clearCheckoutKey,
   idempotencyKeyForIntent,
 } from '../../lib/checkout-key';
+import type { SiteConfig } from '../../lib/config';
 import type { GeoDivision } from '../../lib/geo';
 import { t, type Locale } from '../../lib/i18n';
+import { formatBdt } from '../../lib/money';
 import { isValidPhone, normalizePhone } from '../../lib/phone';
 import type { PricedCart } from '../../lib/pricing';
 import CheckoutFallback, { type FallbackLinks } from './CheckoutFallback';
 import CheckoutFields, { type CheckoutFormValues } from './CheckoutFields';
 import OrderSummary from './OrderSummary';
+import PaymentMethods, { type PaymentMethod } from './PaymentMethods';
 import { useTurnstile } from './use-turnstile';
 
 interface Props {
@@ -30,7 +33,13 @@ interface Props {
   bnDigits: boolean;
   geo: GeoDivision[];
   turnstileSiteKey: string;
-  codEnabled: boolean;
+  payments: SiteConfig['payments'];
+  couponsEnabled: boolean;
+}
+
+interface AppliedCoupon {
+  code: string;
+  discount: number;
 }
 
 interface CheckoutSuccess {
@@ -60,7 +69,8 @@ export default function CheckoutForm({
   bnDigits,
   geo,
   turnstileSiteKey,
-  codEnabled,
+  payments,
+  couponsEnabled,
 }: Props) {
   const [lines, setLines] = useState<StoredCartLine[]>([]);
   const [ready, setReady] = useState(false);
@@ -81,7 +91,25 @@ export default function CheckoutForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fallback, setFallback] = useState<FallbackLinks | null>(null);
-  const formVisible = ready && codEnabled && lines.length > 0;
+  const initialPaymentMethod: PaymentMethod = payments.cod.enabled
+    ? 'cod'
+    : payments.bkash.enabled
+      ? 'bkash'
+      : payments.nagad.enabled
+        ? 'nagad'
+        : 'cod';
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialPaymentMethod);
+  const [paymentSender, setPaymentSender] = useState('');
+  const [paymentTrxId, setPaymentTrxId] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const anyPaymentEnabled =
+    payments.cod.enabled ||
+    payments.bkash.enabled ||
+    payments.nagad.enabled;
+  const formVisible = ready && anyPaymentEnabled && lines.length > 0;
   const { token, containerRef, reset: resetTurnstile } = useTurnstile(
     turnstileSiteKey,
     formVisible,
@@ -95,6 +123,21 @@ export default function CheckoutForm({
   }, []);
 
   const signature = cartSignature(cartItemInputs(lines));
+
+  useEffect(() => {
+    if (payments.cod.enabled) {
+      setPaymentMethod('cod');
+    } else if (payments.bkash.enabled) {
+      setPaymentMethod('bkash');
+    } else if (payments.nagad.enabled) {
+      setPaymentMethod('nagad');
+    }
+  }, [payments.cod.enabled, payments.bkash.enabled, payments.nagad.enabled]);
+
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponError(null);
+  }, [signature, districtName]);
 
   useEffect(() => {
     if (!lines.length) {
@@ -147,8 +190,73 @@ export default function CheckoutForm({
   );
   const hasUnavailable = Boolean(priced && !priced.all_available);
 
+  const money = (amount: number) => formatBdt(amount, { locale, symbol, bnDigits });
+
   const updateField = (key: keyof CheckoutFormValues, value: string) => {
     setForm((previous) => ({ ...previous, [key]: value }));
+  };
+
+  const couponMessage = (code: string) => {
+    const key = `checkout.couponErrors.${code}`;
+    const message = t(locale, key);
+    return message === key ? t(locale, 'checkout.couponInvalid') : message;
+  };
+
+  const applyCoupon = async () => {
+    const code = couponCode.trim();
+    if (!code) return;
+    setCouponLoading(true);
+    setCouponError(null);
+    setAppliedCoupon(null);
+
+    try {
+      const response = await fetch('/api/coupons/check', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          items: cartItemInputs(lines),
+          ...(districtName ? { district: districtName } : {}),
+          coupon_code: code,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        data?: PricedCart;
+        error?: { code?: string; message?: string };
+      } | null;
+
+      if (!response.ok || !payload?.ok || !payload.data) {
+        setCouponError(
+          payload?.error?.code
+            ? couponMessage(payload.error.code)
+            : t(locale, 'checkout.couponInvalid'),
+        );
+        return;
+      }
+
+      if (payload.data.coupon_error) {
+        setCouponError(couponMessage(payload.data.coupon_error));
+        return;
+      }
+
+      if (payload.data.coupon) {
+        setAppliedCoupon({
+          code: payload.data.coupon.code,
+          discount: payload.data.discount,
+        });
+        setCouponCode(payload.data.coupon.code);
+      }
+    } catch {
+      setCouponError(t(locale, 'errors.network'));
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponError(null);
+    setCouponCode('');
   };
 
   const submit = async (event: Event) => {
@@ -180,6 +288,16 @@ export default function CheckoutForm({
       setError(t(locale, 'checkout.turnstileFailed'));
       return;
     }
+    if (paymentMethod !== 'cod') {
+      if (!isValidPhone(paymentSender)) {
+        setError(t(locale, 'checkout.senderPhoneInvalid'));
+        return;
+      }
+      if (!/^[A-Za-z0-9]{6,32}$/.test(paymentTrxId.trim())) {
+        setError(t(locale, 'checkout.trxInvalid'));
+        return;
+      }
+    }
     if (!lines.length) {
       setError(t(locale, 'checkout.cartEmpty'));
       return;
@@ -203,6 +321,10 @@ export default function CheckoutForm({
       upazila: upazilaName,
       address: form.address.trim(),
       note: form.note.trim(),
+      paymentMethod,
+      paymentSender: paymentMethod === 'cod' ? '' : (normalizePhone(paymentSender) ?? paymentSender),
+      paymentTrxId: paymentMethod === 'cod' ? '' : paymentTrxId.trim().toUpperCase(),
+      couponCode: appliedCoupon?.code ?? '',
     });
     const idempotencyKey = idempotencyKeyForIntent(intentSignature, storage);
 
@@ -225,7 +347,14 @@ export default function CheckoutForm({
             note: form.note.trim() || null,
           },
           items,
-          payment_method: 'cod',
+          payment_method: paymentMethod,
+          ...(paymentMethod === 'cod'
+            ? {}
+            : {
+                payment_sender: normalizePhone(paymentSender) ?? paymentSender,
+                payment_trx_id: paymentTrxId.trim().toUpperCase(),
+              }),
+          ...(appliedCoupon ? { coupon_code: appliedCoupon.code } : {}),
           ...(token ? { turnstile_token: token } : {}),
         }),
       });
@@ -274,7 +403,13 @@ export default function CheckoutForm({
       } else if (code === 'invalid_geo') {
         setError(t(locale, 'checkout.geoInvalid'));
       } else if (code === 'payment_unavailable') {
-        setError(t(locale, 'checkout.codUnavailable'));
+        setError(t(locale, 'checkout.paymentUnavailable'));
+      } else if (code === 'invalid_payment_sender') {
+        setError(t(locale, 'checkout.senderPhoneInvalid'));
+      } else if (code.startsWith('coupon_')) {
+        setError(couponMessage(code));
+        setAppliedCoupon(null);
+        setCouponError(couponMessage(code));
       } else if (code === 'validation_error' || code === 'invalid_request') {
         setError(t(locale, 'checkout.validation'));
       } else if (code === 'idempotency_conflict') {
@@ -301,10 +436,10 @@ export default function CheckoutForm({
     return <p class="text-muted text-sm">{t(locale, 'common.loading')}</p>;
   }
 
-  if (!codEnabled) {
+  if (!anyPaymentEnabled) {
     return (
       <div class="card px-6 py-12 text-center">
-        <h1 class="text-xl font-semibold">{t(locale, 'checkout.codUnavailable')}</h1>
+        <h1 class="text-xl font-semibold">{t(locale, 'checkout.paymentUnavailable')}</h1>
         <a href="/cart" class="btn-primary mt-5 inline-block px-5 py-2 text-sm">
           {t(locale, 'checkout.backToCart')}
         </a>
@@ -348,8 +483,59 @@ export default function CheckoutForm({
             }}
             onUpazila={setUpazilaName}
           >
+            <PaymentMethods
+              locale={locale}
+              payments={payments}
+              selected={paymentMethod}
+              onSelect={setPaymentMethod}
+              sender={paymentSender}
+              trxId={paymentTrxId}
+              onSender={setPaymentSender}
+              onTrxId={setPaymentTrxId}
+            />
             {turnstileSiteKey && <div ref={containerRef} class="mt-3" />}
           </CheckoutFields>
+
+          {couponsEnabled && (
+          <section class="card p-4">
+            <h2 class="text-lg font-semibold">{t(locale, 'checkout.coupon')}</h2>
+            <p class="text-muted mt-1 text-sm">{t(locale, 'checkout.couponHint')}</p>
+            {appliedCoupon ? (
+              <div class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm">
+                <span class="font-medium">
+                  {appliedCoupon.code} · −{money(appliedCoupon.discount)}
+                </span>
+                <button type="button" class="text-sm underline" onClick={removeCoupon}>
+                  {t(locale, 'checkout.removeCoupon')}
+                </button>
+              </div>
+            ) : (
+              <div class="mt-3 flex gap-2">
+                <input
+                  class="min-w-0 flex-1 rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm uppercase outline-none focus:border-[var(--color-primary)]"
+                  value={couponCode}
+                  maxLength={32}
+                  autoComplete="off"
+                  placeholder={t(locale, 'checkout.couponPlaceholder')}
+                  onInput={(event) => setCouponCode((event.target as HTMLInputElement).value)}
+                />
+                <button
+                  type="button"
+                  class="rounded-[var(--radius)] border border-[var(--color-border)] px-4 py-2 text-sm font-medium"
+                  disabled={couponLoading}
+                  onClick={applyCoupon}
+                >
+                  {couponLoading ? t(locale, 'common.loading') : t(locale, 'checkout.applyCoupon')}
+                </button>
+              </div>
+            )}
+            {couponError && (
+              <p class="mt-2 text-sm" role="alert" style="color:#be123c">
+                {couponError}
+              </p>
+            )}
+          </section>
+          )}
 
           {priceError && (
             <p class="text-sm" role="alert" style="color:#be123c">
@@ -379,6 +565,8 @@ export default function CheckoutForm({
             bnDigits={bnDigits}
             priced={priced}
             loading={loading}
+            discount={appliedCoupon?.discount ?? 0}
+            couponCode={appliedCoupon?.code ?? null}
           />
         </aside>
       </div>

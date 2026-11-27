@@ -23,6 +23,29 @@ export function imageUrl(baseKey: string, size: ImageSize, publicUrl: string): s
   return base ? `${base}/${key}` : `/img/${key}`;
 }
 
+export function brandLogoKey(uuid: string): string {
+  return `brand/${uuid}.webp`;
+}
+
+export function brandLogoUrl(key: string, publicUrl: string): string {
+  const base = publicUrl.trim().replace(/\/+$/, '');
+  return base ? `${base}/${key}` : `/img/${key}`;
+}
+
+export function brandKeyFromLogoUrl(value: string): string | null {
+  const pathname = (() => {
+    try {
+      return new URL(value, 'https://local.invalid').pathname;
+    } catch {
+      return value;
+    }
+  })();
+  const match = pathname.match(/\/img\/(brand\/[A-Za-z0-9_-]+\.webp)$/);
+  if (match?.[1]) return match[1];
+  const direct = pathname.replace(/^\/+/, '').match(/^(brand\/[A-Za-z0-9_-]+\.webp)$/);
+  return direct?.[1] ?? null;
+}
+
 export function isWebPBytes(bytes: Uint8Array): boolean {
   return (
     bytes.length >= 12 &&
@@ -39,7 +62,8 @@ export function isWebPBytes(bytes: Uint8Array): boolean {
 
 const IMAGE_KEY_PATTERN =
   /^products\/\d+\/[A-Za-z0-9_-]+-(?:thumb|md|full)\.webp$/;
+const BRAND_KEY_PATTERN = /^brand\/[A-Za-z0-9_-]+\.webp$/;
 
 export function isValidImageKey(key: string): boolean {
-  return IMAGE_KEY_PATTERN.test(key);
+  return IMAGE_KEY_PATTERN.test(key) || BRAND_KEY_PATTERN.test(key);
 }

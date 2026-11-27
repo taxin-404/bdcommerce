@@ -2,6 +2,11 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { createCheckoutOrder, type CheckoutLineSnapshot } from '../../lib/checkout';
 import { loadConfig, loadConfigFromRows, type SiteConfig } from '../../lib/config';
+import {
+  COUPON_ERROR_MESSAGES,
+  couponErrorStatus,
+  type CouponErrorCode,
+} from '../../lib/coupons';
 import { isD1Unavailable } from '../../lib/db-errors';
 import { buildCheckoutFallback } from '../../lib/fallback';
 import { resolveGeoSelection } from '../../lib/geo';
@@ -14,6 +19,19 @@ import { checkoutRequestHash } from '../../lib/request-hash';
 import { readTurnstileConfig, verifyTurnstile } from '../../lib/turnstile';
 import { checkoutSchema } from '../../lib/validation/checkout';
 import { badRequest, serverUnavailable, validationErrorResponse } from '../validation';
+
+export function couponErrorResponse(
+  c: Parameters<typeof badRequest>[0],
+  code: CouponErrorCode,
+) {
+  return c.json(
+    {
+      ok: false as const,
+      error: { code, message: COUPON_ERROR_MESSAGES[code] },
+    },
+    couponErrorStatus(code),
+  );
+}
 
 export const checkoutRoutes = new Hono<{ Bindings: Env }>();
 
@@ -51,18 +69,38 @@ checkoutRoutes.post(
       note: input.customer.note,
     };
 
+    const paymentMethod = input.payment_method;
+    const paymentSender =
+      paymentMethod === 'cod'
+        ? null
+        : normalizePhone(input.payment_sender ?? '');
+    const paymentTrxId =
+      paymentMethod === 'cod' ? null : (input.payment_trx_id?.trim().toUpperCase() ?? null);
+    if (paymentMethod !== 'cod' && !paymentSender) {
+      return badRequest(c, 'invalid_payment_sender', 'Enter a valid sender mobile number.');
+    }
+
     const requestHash = await checkoutRequestHash({
       customer,
       items: input.items,
-      paymentMethod: input.payment_method,
+      paymentMethod,
+      paymentSender,
+      paymentTrxId,
+      couponCode: input.coupon_code ?? null,
     });
     let config: SiteConfig | null = null;
 
     try {
       config = await loadConfig(db);
 
-      if (!config.payments.cod.enabled) {
-        return badRequest(c, 'payment_unavailable', 'Cash on delivery is not available.');
+      const paymentConfig =
+        paymentMethod === 'cod'
+          ? config.payments.cod
+          : paymentMethod === 'bkash'
+            ? config.payments.bkash
+            : config.payments.nagad;
+      if (!paymentConfig.enabled) {
+        return badRequest(c, 'payment_unavailable', 'That payment method is not available.');
       }
 
       const existing = await findOrderByIdempotencyKey(db, input.idempotency_key);
@@ -110,7 +148,13 @@ checkoutRoutes.post(
         }
       }
 
-      const priced = await priceCart(db, input.items, config, geo.district.name);
+      const priced = await priceCart(db, input.items, config, geo.district.name, {
+        couponCode: input.coupon_code ?? null,
+      });
+
+      if (priced.coupon_error) {
+        return couponErrorResponse(c, priced.coupon_error);
+      }
 
       if (!priced.all_available) {
         return c.json(
@@ -148,10 +192,16 @@ checkoutRoutes.post(
         customer,
         lines,
         subtotal: priced.subtotal,
+        discount: priced.discount,
         shippingFee: priced.shipping_fee,
         total: priced.total,
         number: generateOrderNumber(),
         requestHash,
+        paymentMethod,
+        paymentStatus: paymentMethod === 'cod' ? 'unpaid' : 'pending_verification',
+        paymentSender,
+        paymentTrxId,
+        couponCode: priced.coupon?.code ?? null,
       });
 
       if (result.ok) {
@@ -190,6 +240,25 @@ checkoutRoutes.post(
             error: {
               code: 'idempotency_conflict',
               message: 'This idempotency key belongs to another order.',
+            },
+          },
+          409,
+        );
+      }
+
+      if (result.code === 'coupon_unavailable') {
+        // Re-check the coupon to report the real reason (inactive, expired,
+        // below minimum, exhausted) instead of always blaming exhaustion.
+        const recheck = await priceCart(db, input.items, config, geo.district.name, {
+          couponCode: input.coupon_code ?? null,
+        });
+        if (recheck.coupon_error) return couponErrorResponse(c, recheck.coupon_error);
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'coupon_exhausted',
+              message: COUPON_ERROR_MESSAGES.coupon_exhausted,
             },
           },
           409,

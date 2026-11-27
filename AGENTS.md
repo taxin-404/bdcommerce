@@ -129,7 +129,7 @@ pnpm run deploy          # remote D1 migrations + wrangler deploy (use `run`: pl
 - Start by stating a short plan, then implement. Prefer small, reviewable diffs.
 - After each phase: run `pnpm typecheck && pnpm test && pnpm build`, fix errors, then summarize what changed and
   what to manually test. Do not claim something works without running it.
-- Do not add features that are not in the current phase. Put ideas in `docs/IDEAS.md` instead.
+- Do not add features that are not in the current phase. Put ideas in `doc/IDEAS.md` instead.
 - Do not add paid services, analytics SDKs, or heavy UI libraries.
 - When unsure about a requirement, ask one concise question instead of guessing.
 - Commit message style: `phase-N: short description`.

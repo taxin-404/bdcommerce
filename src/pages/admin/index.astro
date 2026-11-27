@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { resolveAdminLocale } from '../../lib/admin-locale';
 import { loadAdminDashboard } from '../../lib/admin-dashboard';
-import { loadConfig } from '../../lib/config';
+import { loadStorefront } from '../../lib/storefront';
 import { formatBdt } from '../../lib/money';
 import { t } from '../../lib/i18n';
 import { countRoundTrips, logQueryCount } from '../../lib/query-log';
@@ -19,7 +19,25 @@ if (requested === 'bn' || requested === 'en') {
 const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
 
 const { value: db, count } = countRoundTrips(env.DB);
-const [dashboard, config] = await Promise.all([loadAdminDashboard(db), loadConfig(db)]);
+const [{ config, setupCompleted }, dashboard] = await Promise.all([
+  loadStorefront(db),
+  loadAdminDashboard(db),
+]);
+
+if (!setupCompleted) {
+  // Only a first-run shop pays for this extra existence check; an existing
+  // catalog is never forced through the wizard.
+  const catalog = await db
+    .prepare(
+      `SELECT EXISTS(SELECT 1 FROM products LIMIT 1) AS has_products,
+              EXISTS(SELECT 1 FROM categories LIMIT 1) AS has_categories`,
+    )
+    .first<{ has_products: number; has_categories: number }>();
+  if (!catalog?.has_products && !catalog?.has_categories) {
+    return Astro.redirect('/admin/setup');
+  }
+}
+
 logQueryCount('admin/dashboard', count());
 
 const money = (amount: number) =>
@@ -65,6 +83,15 @@ const cards = [
       {t(locale, 'admin.dashboardCards.viewPending')}
     </a>
   </div>
+
+  {!setupCompleted && (
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+      <span>{t(locale, 'admin.setup.pending')}</span>
+      <a href="/admin/setup" class="rounded bg-amber-900 px-3 py-2 font-medium text-white">
+        {t(locale, 'admin.setup.open')}
+      </a>
+    </div>
+  )}
 
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
     {

@@ -71,6 +71,13 @@
       "when": 1795795431020,
       "tag": "0009_order_item_stock_tracked",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795803736766,
+      "tag": "0010_coupon_guard",
+      "breakpoints": true
     }
   ]
 }

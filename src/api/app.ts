@@ -4,6 +4,7 @@ import type { AdminEnv } from './middleware/admin';
 import { adminRoutes } from './routes/admin';
 import { cartRoutes } from './routes/cart';
 import { checkoutRoutes } from './routes/checkout';
+import { couponRoutes } from './routes/coupons';
 import { healthRoutes } from './routes/health';
 import { imageRoutes } from './routes/images';
 import { trackRoutes } from './routes/track';
@@ -27,9 +28,16 @@ app.use('/api/track', async (c, next) => {
   c.header('X-Content-Type-Options', 'nosniff');
 });
 
+app.use('/api/coupons/*', async (c, next) => {
+  await next();
+  c.header('Cache-Control', 'no-store');
+  c.header('X-Content-Type-Options', 'nosniff');
+});
+
 app.route('/api', healthRoutes);
 app.route('/api', cartRoutes);
 app.route('/api', checkoutRoutes);
+app.route('/api', couponRoutes);
 app.route('/api', trackRoutes);
 
 app.use('/api/admin/*', async (c, next) => {

@@ -7,7 +7,16 @@ import type { AdminLocale } from '../lib/admin-locale';
 interface Props {
   title: string;
   locale: AdminLocale;
-  current?: 'dashboard' | 'categories' | 'products' | 'product' | 'orders' | 'order';
+  current?:
+    | 'dashboard'
+    | 'categories'
+    | 'products'
+    | 'product'
+    | 'orders'
+    | 'order'
+    | 'coupons'
+    | 'settings'
+    | 'setup';
 }
 
 const { title, locale, current } = Astro.props;
@@ -37,6 +46,17 @@ const errorCodes = [
   'status_conflict',
   'invalid_phone',
   'db_unavailable',
+  'invalid_payment_method',
+  'invalid_payment_sender',
+  'coupon_not_found',
+  'coupon_inactive',
+  'coupon_not_started',
+  'coupon_expired',
+  'coupon_min_subtotal',
+  'coupon_exhausted',
+  'coupon_invalid',
+  'duplicate_coupon',
+  'validation_error',
 ] as const;
 const adminErrors = Object.fromEntries(
   errorCodes.map((code) => [code, t(locale, `admin.errors.${code}`)]),
@@ -48,6 +68,8 @@ const navItems = [
   { key: 'orders', href: '/admin/orders', label: t(locale, 'admin.orders') },
   { key: 'products', href: '/admin/products', label: t(locale, 'admin.products') },
   { key: 'categories', href: '/admin/categories', label: t(locale, 'admin.categories') },
+  { key: 'coupons', href: '/admin/coupons', label: t(locale, 'admin.coupons') },
+  { key: 'settings', href: '/admin/settings', label: t(locale, 'admin.settings.title') },
 ] as const;
 ---
 

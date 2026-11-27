@@ -10,6 +10,63 @@ export const orderStatusUpdateSchema = z.object({
   note: z.string().trim().max(500).nullable().optional(),
 });
 
+export const paymentActionSchema = z.object({
+  action: z.enum(['verify', 'reject']),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+const optionalIsoDate = z
+  .string()
+  .trim()
+  .max(40)
+  .nullable()
+  .optional()
+  .transform((value) => (value ? value : null))
+  .refine(
+    (value) =>
+      value === null ||
+      (value.includes('T') && !Number.isNaN(Date.parse(value))),
+    'Invalid date',
+  );
+
+export const couponInputSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .min(3)
+      .max(32)
+      .regex(/^[A-Za-z0-9_-]+$/, 'Use letters, digits, dashes, or underscores')
+      .transform((value) => value.toUpperCase()),
+    type: z.enum(['percent', 'fixed']),
+    value: z.number().int().positive().max(1_000_000_000),
+    min_subtotal: z.number().int().nonnegative().max(1_000_000_000).default(0),
+    max_uses: z.number().int().positive().max(1_000_000).nullable().optional(),
+    starts_at: optionalIsoDate,
+    ends_at: optionalIsoDate,
+    active: z.boolean().default(true),
+  })
+  .superRefine((value, ctx) => {
+    if (value.type === 'percent' && value.value > 100) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['value'],
+        message: 'Percentage coupons must be between 1 and 100',
+      });
+    }
+    if (value.starts_at && value.ends_at && value.ends_at <= value.starts_at) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['ends_at'],
+        message: 'The end date must be after the start date',
+      });
+    }
+  });
+
+export const couponActiveSchema = z.object({
+  active: z.boolean(),
+});
+
 export const blocklistInputSchema = z.object({
   phone: z.string().trim().min(1).max(30),
   reason: z.string().trim().max(200).nullable().optional(),
