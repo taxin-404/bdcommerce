@@ -1,51 +1,101 @@
-# AGENTS.md - read this first
+# AGENTS.md — BD Commerce Template
 
-You are continuing a project: a **multi-tenant ecommerce platform for Bangladesh that must run
-entirely on Cloudflare's free tier**. One codebase must work for any type of business
-(physical goods, digital goods, services/bookings).
+Read this file first in every session. Then read `PLAN.md` and work on **one phase at a time**.
 
-## Where to look
-- `docs/DECISIONS.md` - every architecture/product decision and why. **Do not reverse these without asking the owner.**
-- `docs/ROADMAP.md`   - what is done, what is next, in priority order. Work top to bottom.
-- `README.md`         - how to run and deploy.
+## What this project is
 
-## Current state
-Backend base is built and smoke-tested locally (wrangler dev + local D1):
-- `packages/shared`   zod schemas, constants, BD divisions/districts, helpers
-- `packages/db`       Drizzle schema + generated migration (`migrations/`)
-- `packages/payments` payment adapters. **Live methods: COD and manual wallet payment (bKash/Nagad/Rocket send-money + TrxID, admin verifies). The owner has NO bKash merchant account.** The bKash gateway code is dormant and only tested against `scripts/mock-bkash.mjs`. Do not add other gateways until asked (see DECISIONS D9)
-- `packages/couriers` courier adapters (Steadfast, Pathao are stubs)
-- `apps/api`          Hono Worker: catalog, guest checkout, order tracking, admin routes
-NOT built: storefront (Astro), admin UI (React), courier booking, SMS, image upload, real admin login, cron jobs (stale unpaid orders), bKash gateway refunds.
+A reusable, config-driven e-commerce template for small Bangladeshi businesses (any business type:
+clothing, food, electronics, baby items, digital goods...). Each business forks the repo and deploys
+to its own Cloudflare account on the **free tier**. No monthly cost is a hard requirement.
+
+## Hard constraints (never violate)
+
+1. **Cloudflare free tier only.** No paid products, no external paid services in the default setup.
+   Allowed bindings: Workers (+ static assets), D1, R2, KV (sparingly), Turnstile.
+2. **Workers Free = ~10 ms CPU per request and 100k requests/day.**
+   - No heavy CPU work in request handlers: no bcrypt/argon2, no big JSON transforms, no image processing in the Worker.
+   - Do not serve images through the Worker. Images are served from R2 (public bucket / custom domain) with long cache headers.
+3. **D1 free plan enforces daily limits: 5 million rows read and 100,000 rows written per day** (queries fail when exceeded; resets 00:00 UTC = 06:00 Bangladesh time). Index writes count as rows written.
+   - Every WHERE/ORDER BY column used on a hot path must be indexed.
+   - No full table scans, no `LIKE '%x%'` on big tables (use FTS5), no N+1 queries, no `COUNT(*)` on every request.
+   - Use keyset pagination (`WHERE id < ? ORDER BY id DESC LIMIT ?`), not OFFSET.
+   - A product page should cost ≤ ~6 queries; a listing page ≤ ~4.
+   - Use `db.batch([...])` for multi-statement writes (it is transactional).
+4. **Worker bundle size is small on the free plan.** Prefer light dependencies. Check bundle size after adding a package.
+5. **Never trust the client.** Cart lives in localStorage, but prices, stock, shipping fee and coupons are
+   recalculated on the server at checkout.
+6. **Secrets** go in `wrangler secret` / `.dev.vars` (git-ignored). Never commit secrets. Never log PII (phone numbers, addresses) beyond what is needed.
+
+## Resilience rules (target: 500-1,000 visitors, shop stays up)
+
+No free host can promise zero downtime, so the goal is graceful degradation. The realistic failure modes are: daily
+quota exhausted, a traffic spike hammering D1, or one failing request. Design for all three.
+
+1. **Cache-first reads.** Anonymous GET pages/API responses are cached (Cache API on custom domains; short in-isolate
+   memory cache as fallback on `*.workers.dev`) with stale-while-revalidate, and purged on admin writes.
+2. **Zero D1 writes on GET.** No view counters, no analytics rows, no sessions in the DB (sessions are signed cookies,
+   carts are localStorage). Writes are reserved for orders, admin changes, and failed-login tracking.
+3. **Catalog snapshot in R2.** Every admin save rewrites `snapshot/catalog.json` (via `waitUntil`). If D1 errors
+   (quota or outage), the Worker serves the catalog from the snapshot in read-only mode and shows a banner.
+4. **Degraded checkout.** If order creation fails because D1 is unavailable, show an "Order via Messenger/WhatsApp"
+   fallback with the cart summary prefilled, so no sale is lost.
+5. **Idempotent checkout.** The client sends a unique `idempotency_key`; retries and double taps on slow networks never
+   create duplicate orders.
+6. **Fail-soft integrations.** Pixel, Conversions API, courier, and Turnstile-verification outages must never block
+   browsing; use `waitUntil` for non-critical work and timeouts on every external call.
+7. **Cheap health endpoint.** `/api/health` makes no D1 write and is safe for an external uptime monitor.
+8. **Friendly errors.** Every failure shows a clear Bangla/English message with retry, never a raw error page.
+
+## Stack (decided — do not swap without asking)
+
+- Astro (SSR) with `@astrojs/cloudflare` adapter, TypeScript strict
+- Tailwind CSS, Preact islands for interactive parts (cart, checkout, admin tables)
+- API: Hono app (routes in `src/api/`) mounted in Astro at `src/pages/api/[...route].ts`; `@hono/zod-validator` for input validation; admin auth is middleware on `/api/admin/*`
+- D1 (SQLite) + Drizzle ORM + SQL migrations in `/migrations`
+- R2 for product images
+- Zod for validation
+- Vitest for unit tests (pricing, validation, phone/address helpers)
+- `wrangler.jsonc` for config; `pnpm` as package manager
+
+**Before using any Cloudflare / Astro / Drizzle API, check the current official docs** (web search or docs tool).
+Do not rely on memory for adapter options, binding syntax, or wrangler config — they change often.
+
+## Conventions
+
+- Money: integer BDT taka everywhere. Format only at the UI layer. Round with `Math.round`.
+- All user-facing strings go through the i18n helper (`bn` and `en`). Never hardcode UI text in components.
+- All business-specific values (name, logo, colors, currency, delivery fees, payment methods, social links)
+  come from `site.config.ts` and the `settings` table. Never hardcode a business name or color.
+- Phone numbers: validate with `^(?:\+?88)?01[3-9]\d{8}$`, normalize to `01XXXXXXXXX` before storing.
+- Dates stored as ISO strings in UTC (`TEXT`), displayed in `Asia/Dhaka`.
+- File names kebab-case, components PascalCase, DB columns snake_case.
+- Small focused files. No file over ~300 lines without a reason.
+- Every API endpoint: validate input with Zod, return `{ ok: true, data }` or `{ ok: false, error }`, correct HTTP status.
+- Admin auth is one Hono middleware on `/api/admin/*`; admin pages reuse the same session check. Never check auth ad hoc inside a handler.
 
 ## Commands
-```
-npm install
-npm run db:generate        # after editing packages/db/src/schema.ts (NEVER hand-edit generated migrations)
-npm run db:migrate:local
-node scripts/seed.mjs demo # prints admin token; then: npm run seed:local
-npm run dev:api            # http://localhost:8787, send  -H "x-store-slug: demo"
-npm run typecheck          # must pass before you finish any task
-node scripts/mock-bkash.mjs   # local fake bKash on :9999; copy apps/api/.dev.vars.example to .dev.vars and set BKASH_BASE_URL_OVERRIDE
+
+```bash
+pnpm install
+pnpm dev                 # local dev with local D1/R2 emulation
+pnpm typecheck           # must pass before every commit
+pnpm test                # vitest
+pnpm build
+pnpm db:generate         # drizzle-kit generate migration
+pnpm db:migrate:local    # wrangler d1 migrations apply --local
+pnpm db:migrate:remote   # wrangler d1 migrations apply --remote
+pnpm deploy              # build + wrangler deploy
 ```
 
-## Hard rules (violating these breaks the product)
-1. **Every tenant table has `store_id` and EVERY query filters by it.** A missing filter is a cross-store data leak.
-2. **Money is integer poisha** (1 BDT = 100). Never floats. Use `taka()` from shared for BDT->poisha.
-3. **Never trust client prices.** Checkout re-reads prices/stock from D1.
-4. **Free-tier budget.** Workers CPU per request is tiny (10-30 ms, sources disagree). No image processing, PDF generation,
-   heavy crypto loops or big JSON transforms inside Workers. D1 free tier enforces daily row read/write limits:
-   index every filter column, avoid full scans, cache public reads (KV / Cache-Control).
-5. **Use adapters for providers.** New payment gateway = new `PaymentProvider` in `packages/payments`; new courier = new
-   `CourierProvider` in `packages/couriers`. Do not hardcode providers in routes.
-6. **Validate all input with zod from `packages/shared`.** Share schemas between API and frontends.
-7. **Schema changes go through `drizzle-kit generate`**, then apply with wrangler. Keep migrations forward-only.
-8. **No secrets in the repo.** Use `wrangler secret put` and `.dev.vars` (gitignored). Gateway credentials are stored only AES-GCM encrypted (D9); never log or return them.
-   Never mark a manual payment paid without an admin action; TrxIDs must stay unique per store.
-   Never trust payment callback query params; mark paid only after server-to-server verification with an exact amount match (D9).
-9. Keep it TypeScript, keep dependencies minimal (bundle size and CPU matter).
-10. Verify your work: run `npm run typecheck`, and for API changes, run `wrangler dev` and curl the endpoints.
+(If a script does not exist yet, create it in Phase 0.)
 
-## Working style expected by the owner
-- Build one roadmap step at a time, test it, then report what works and what does not. Be honest about untested parts.
-- Owner is Bangladesh-based; target users are mostly on phones with slow connections, buy via Facebook, and prefer COD.
+## Workflow rules for the agent
+
+- Work on **one phase** of `PLAN.md` per session. Do not start the next phase unless asked.
+- Start by stating a short plan, then implement. Prefer small, reviewable diffs.
+- After each phase: run `pnpm typecheck && pnpm test && pnpm build`, fix errors, then summarize what changed and
+  what to manually test. Do not claim something works without running it.
+- Do not add features that are not in the current phase. Put ideas in `docs/IDEAS.md` instead.
+- Do not add paid services, analytics SDKs, or heavy UI libraries.
+- When unsure about a requirement, ask one concise question instead of guessing.
+- Commit message style: `phase-N: short description`.
