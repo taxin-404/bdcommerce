@@ -14,7 +14,9 @@ to its own Cloudflare account on the **free tier**. No monthly cost is a hard re
    Allowed bindings: Workers (+ static assets), D1, R2, KV (sparingly), Turnstile.
 2. **Workers Free = ~10 ms CPU per request and 100k requests/day.**
    - No heavy CPU work in request handlers: no bcrypt/argon2, no big JSON transforms, no image processing in the Worker.
-   - Do not serve images through the Worker. Images are served from R2 (public bucket / custom domain) with long cache headers.
+   - Prefer serving images straight from R2 via `R2_PUBLIC_URL` (public bucket or custom domain) so they don't use Worker requests.
+   - One-click default: when `R2_PUBLIC_URL` is unset, serve images through a Worker route `/img/*` with `Cache-Control: public, max-age=31536000, immutable`, and show an admin banner recommending R2 public access.
+   - Always upload three sizes (thumb 400 px, md 800 px, full 1600 px) so listing pages load tiny images.
 3. **D1 free plan enforces daily limits: 5 million rows read and 100,000 rows written per day** (queries fail when exceeded; resets 00:00 UTC = 06:00 Bangladesh time). Index writes count as rows written.
    - Every WHERE/ORDER BY column used on a hot path must be indexed.
    - No full table scans, no `LIKE '%x%'` on big tables (use FTS5), no N+1 queries, no `COUNT(*)` on every request.
@@ -45,6 +47,23 @@ quota exhausted, a traffic spike hammering D1, or one failing request. Design fo
    browsing; use `waitUntil` for non-critical work and timeouts on every external call.
 7. **Cheap health endpoint.** `/api/health` makes no D1 write and is safe for an external uptime monitor.
 8. **Friendly errors.** Every failure shows a clear Bangla/English message with retry, never a raw error page.
+
+## One-click deploy rules (Deploy to Cloudflare button)
+
+The primary install path is the **Deploy to Cloudflare** button, used by non-developers with no terminal:
+`https://deploy.workers.cloudflare.com/?url=https://github.com/taxin-404/bdcommerce`
+
+1. The repo stays **public** and the app stays a **Workers** app (the button does not support Pages).
+2. `wrangler.jsonc` declares the D1 binding `DB` and R2 binding `IMAGES` **without resource IDs**, so the button auto-provisions them.
+   **Never commit real database IDs or bucket IDs.** Check the current Wrangler and deploy-button docs for the exact config shape.
+3. `package.json` has `build` and `deploy` scripts. `deploy` applies remote D1 migrations (`wrangler d1 migrations apply DB --remote`) and then runs `wrangler deploy`.
+   Migrations must be idempotent, forward-only, and safe to run on every deploy. No destructive statements without an explicit new migration.
+4. `.dev.vars.example` lists every secret with a comment; the button prompts for them. **`ADMIN_PASSPHRASE` is the only required secret.**
+   Everything else (Turnstile, courier keys, Conversions API token) is optional and the app must start and work without it.
+   The session HMAC key is derived from `ADMIN_PASSPHRASE` (HKDF) plus a random per-install salt stored in `settings`.
+5. After deploy, **no CLI step may be required.** Business info, theme, payment numbers, delivery fees, and business presets (demo data)
+   are all done in the browser through the first-run setup wizard in `/admin`.
+6. Keep business-specific changes in `site.config.ts` and the `settings` table so a deployed fork can pull template updates (`scripts/sync-upstream.sh`) with minimal merge conflicts.
 
 ## Stack (decided — do not swap without asking)
 
@@ -84,7 +103,7 @@ pnpm build
 pnpm db:generate         # drizzle-kit generate migration
 pnpm db:migrate:local    # wrangler d1 migrations apply --local
 pnpm db:migrate:remote   # wrangler d1 migrations apply --remote
-pnpm deploy              # build + wrangler deploy
+pnpm run deploy          # remote D1 migrations + wrangler deploy (use `run`: plain `pnpm deploy` is a different built-in command)
 ```
 
 (If a script does not exist yet, create it in Phase 0.)
