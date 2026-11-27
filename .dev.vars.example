@@ -1,0 +1,7 @@
+# Required. Use a long, random admin login passphrase.
+# The session signing key is derived from this value later, so there is
+# deliberately no separate SESSION_SECRET.
+ADMIN_PASSPHRASE=replace-with-a-long-random-passphrase
+
+# Optional secrets for later phases (Turnstile, courier, Facebook CAPI) will be
+# documented here when those integrations are added.

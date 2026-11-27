@@ -1,0 +1,46 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { env } from 'cloudflare:workers';
+
+let d1Status = 'unavailable';
+let d1Value: number | null = null;
+
+try {
+  const row = await env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>();
+  d1Value = row?.ok ?? null;
+  d1Status = d1Value === 1 ? 'connected' : 'unexpected response';
+} catch (error) {
+  console.error('D1 health check failed', error);
+}
+
+const statusClasses =
+  d1Status === 'connected'
+    ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
+    : 'bg-rose-50 text-rose-700 ring-rose-600/20';
+---
+
+<Layout title="BD Commerce Template">
+  <main class="mx-auto flex min-h-screen max-w-2xl flex-col justify-center px-6 py-16">
+    <p class="text-sm font-semibold uppercase tracking-widest text-teal-700">Phase 0</p>
+    <h1 class="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">BD Commerce Template</h1>
+    <p class="mt-4 text-base leading-7 text-slate-600">
+      Astro SSR + Hono + D1 + R2 scaffold for Cloudflare Workers.
+    </p>
+
+    <dl class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <dt class="font-medium text-slate-700">
+          D1 binding <code class="text-sm">DB</code>
+        </dt>
+        <dd class={`rounded-full px-3 py-1 text-sm font-medium ring-1 ring-inset ${statusClasses}`}>
+          {d1Status}{d1Value !== null ? ` · SELECT 1 = ${d1Value}` : ''}
+        </dd>
+      </div>
+    </dl>
+
+    <p class="mt-8 text-sm text-slate-500">
+      API health check:
+      <a class="font-medium text-teal-700 underline underline-offset-4" href="/api/health">/api/health</a>
+    </p>
+  </main>
+</Layout>

@@ -1,6 +1,33 @@
-node_modules
-.wrangler
+# dependencies
+node_modules/
+
+# build output
+dist/
+.astro/
+
+# generated Cloudflare types
+worker-configuration.d.ts
+
+# local Cloudflare state
+.wrangler/
+
+# environment and secrets
+.env
+.env.*
+!.env.example
 .dev.vars
-seed.sql
+.dev.vars.*
+!.dev.vars.example
+
+# logs
 *.log
-.dev.vars
+pnpm-debug.log*
+
+# test output
+coverage/
+
+# local seed data
+seed.sql
+
+# OS files
+.DS_Store
