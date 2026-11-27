@@ -71,5 +71,69 @@ const cards = [
     >
       {t(locale, 'admin.category.new')}
     </a>
+    <button
+      id="reindex-search"
+      type="button"
+      class="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-60"
+      data-running={t(locale, 'admin.reindex.running')}
+      data-done={t(locale, 'admin.reindex.done')}
+      data-failed={t(locale, 'admin.reindex.failed')}
+    >
+      {t(locale, 'admin.reindex.action')}
+    </button>
   </div>
+  <p id="reindex-status" class="mt-2 hidden text-sm" aria-live="polite"></p>
 </AdminLayout>
+
+<script>
+  import { adminErrorMessage } from '../../scripts/admin-errors';
+
+  const button = document.getElementById('reindex-search') as HTMLButtonElement | null;
+  const status = document.getElementById('reindex-status');
+
+  button?.addEventListener('click', async () => {
+    button.disabled = true;
+    if (status) {
+      status.textContent = button.dataset.running ?? '';
+      status.className = 'mt-2 text-sm text-slate-600';
+    }
+
+    try {
+      const response = await fetch('/api/admin/search/reindex', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        data?: { products: number };
+        error?: { code?: string };
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        if (status) {
+          status.textContent = adminErrorMessage(
+            payload?.error?.code,
+            button.dataset.failed ?? '',
+          );
+          status.className = 'mt-2 text-sm text-rose-700';
+        }
+        return;
+      }
+
+      if (status) {
+        status.textContent = (button.dataset.done ?? '').replace(
+          '{count}',
+          String(payload.data?.products ?? 0),
+        );
+        status.className = 'mt-2 text-sm text-emerald-700';
+      }
+    } catch {
+      if (status) {
+        status.textContent = button.dataset.failed ?? '';
+        status.className = 'mt-2 text-sm text-rose-700';
+      }
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>

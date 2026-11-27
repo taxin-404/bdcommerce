@@ -126,6 +126,12 @@
       "badOrigin": "The request came from another site and was blocked.",
       "rateLimited": "Too many attempts. Try again later.",
       "adminNotConfigured": "ADMIN_PASSPHRASE is not set for this deployment."
+    },
+    "reindex": {
+      "action": "Reindex search",
+      "running": "Rebuilding the search index...",
+      "done": "Search index rebuilt ({count} products).",
+      "failed": "Could not rebuild the search index."
     }
   },
   "storefront": {

@@ -73,3 +73,38 @@ export async function syncProductFts(db: D1Database, productId: number): Promise
 export async function deleteProductFts(db: D1Database, productId: number): Promise<void> {
   await db.prepare('DELETE FROM product_fts WHERE rowid = ?').bind(productId).run();
 }
+
+/**
+ * Rebuilds the whole search index from the products table. Used by the admin
+ * action so a drifted index can be repaired without a deploy.
+ */
+export async function reindexProductFts(db: D1Database): Promise<number> {
+  const count = await db
+    .prepare('SELECT COUNT(*) AS count FROM products')
+    .first<{ count: number }>();
+
+  await db.batch([
+    db.prepare('DELETE FROM product_fts'),
+    db.prepare(`
+      INSERT INTO product_fts (rowid, title, title_bn, description, description_bn, skus, slug)
+      SELECT
+        p.id,
+        p.title,
+        COALESCE(p.title_bn, ''),
+        COALESCE(p.description, ''),
+        COALESCE(p.description_bn, ''),
+        COALESCE(
+          (
+            SELECT group_concat(v.sku, ' ')
+            FROM variants v
+            WHERE v.product_id = p.id AND v.active = 1 AND v.sku IS NOT NULL
+          ),
+          ''
+        ),
+        p.slug
+      FROM products p
+    `),
+  ]);
+
+  return Number(count?.count ?? 0);
+}
