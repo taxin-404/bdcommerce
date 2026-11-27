@@ -10,9 +10,8 @@ At the end of every phase, the agent appends its deferred items here. When an it
 - Turnstile verification currently trusts `cf-connecting-ip` when present; review the proxy/IP handling during the fraud-control pass.
 - Add a blocklist review/unblock screen; Phase 5 only records blocks, and enforcement is still pending.
 - Delivery-zone mapping is hardcoded to the `dhaka`/`outside` zone ids and Dhaka district. Make the district-to-zone mapping editable in admin settings, and allow adding/removing zones once mapping is editable.
-- Coupon usage is consumed when an order is placed and is not released when the order is cancelled or returned. Decide whether a cancelled order should refund the coupon use.
+- Reject or flag the same bKash/Nagad TrxID used on two orders. Release a coupon use when its order is cancelled or returned. Rate-limit coupon checking (in-memory, no D1 writes).
 - The coupon admin page supports create, active toggle, and delete only. Add full edit for percent/fixed value, date window, and max uses.
-- `POST /api/coupons/check` and coupon-code entry have no rate limit; add one with the Phase 7 checkout rate limits.
 - A rejected wallet payment can only be re-verified after a manual rollback; add an explicit re-verify action if owners need it.
 - Inventory: stock restores skip lines whose product or variant was deleted after the order. Decide whether to keep a full variant/product snapshot or accept the loss.
 - Dashboard revenue is placed-order gross value. Add a separate cash-collected/paid-only metric and make the low-stock threshold configurable (currently fixed at 5).
