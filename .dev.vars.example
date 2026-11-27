@@ -17,3 +17,8 @@ TURNSTILE_SECRET_KEY=
 
 # Optional secrets for later phases (courier, Facebook CAPI) will be documented
 # here when those integrations are added.
+
+# Optional plain variable, not a secret. Set it only after enabling R2 public
+# access (r2.dev or a custom domain), then set the same value in the deployed
+# Worker's Variables and Secrets. Leave unset to use the Worker /img/* route.
+# R2_PUBLIC_URL=https://pub-xxxxxxxx.r2.dev

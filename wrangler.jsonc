@@ -4,11 +4,10 @@
   "main": "@astrojs/cloudflare/entrypoints/server",
   "compatibility_date": "2026-11-23",
   "compatibility_flags": ["nodejs_compat"],
-  "vars": {
-    // Optional. Set to a public R2 bucket or custom domain to serve images
-    // without using Worker requests. Empty means the /img/* fallback is used.
-    "R2_PUBLIC_URL": ""
-  },
+  // R2_PUBLIC_URL is deliberately not declared here. It is optional and must
+  // be set only after enabling R2 public access (r2.dev or a custom domain).
+  // Declaring it as an empty var makes the Deploy to Cloudflare button ask for
+  // a value during setup. Set it later in the Worker settings or in this file.
   "assets": {
     "binding": "ASSETS",
     "directory": "./dist"

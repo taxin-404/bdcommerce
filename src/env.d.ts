@@ -5,6 +5,11 @@ interface Env {
   TURNSTILE_SITE_KEY?: string;
   /** Optional Turnstile secret key. Turnstile runs only when both keys are set. */
   TURNSTILE_SECRET_KEY?: string;
+  /**
+   * Optional public R2 URL (r2.dev or a custom domain). Unset/empty means
+   * images are streamed through the Worker `/img/*` route.
+   */
+  R2_PUBLIC_URL?: string;
 }
 
 declare namespace Cloudflare {
@@ -15,6 +20,11 @@ declare namespace Cloudflare {
     TURNSTILE_SITE_KEY?: string;
     /** Optional Turnstile secret key. Turnstile runs only when both keys are set. */
     TURNSTILE_SECRET_KEY?: string;
+    /**
+     * Optional public R2 URL (r2.dev or a custom domain). Unset/empty means
+     * images are streamed through the Worker `/img/*` route.
+     */
+    R2_PUBLIC_URL?: string;
   }
 }
 

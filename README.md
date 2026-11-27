@@ -78,6 +78,16 @@ with `Cache-Control: public, max-age=31536000, immutable` and the admin shows a
 banner recommending public R2 access. Serving straight from R2 keeps image
 traffic off the Worker request budget.
 
+`R2_PUBLIC_URL` is optional and is **not** requested during the Deploy to
+Cloudflare button setup. Enable R2 public access (an `r2.dev` URL or, preferably,
+a custom domain) in the R2 bucket settings first, then add it after deploy:
+
+- Worker → Settings → Variables and Secrets → `R2_PUBLIC_URL`, or
+- `wrangler.jsonc` → `"vars": { "R2_PUBLIC_URL": "https://..." }`
+
+Redeploy or save the variable so the Worker sees it. Leaving it unset is fully
+supported; the banner is only a free-tier optimisation reminder.
+
 ## Storefront
 
 - `/` — section-based home page from `settings.home_sections`
