@@ -72,8 +72,8 @@
       "slug": "স্লাগ",
       "slugHint": "খালি রাখলে শিরোনাম থেকে তৈরি হবে",
       "category": "ক্যাটাগরি",
-      "price": "দাম (৳)",
-      "compareAtPrice": "তুলনামূল্য (৳)",
+      "price": "দাম ({symbol})",
+      "compareAtPrice": "তুলনামূল্য ({symbol})",
       "status": "অবস্থা",
       "draft": "খসড়া",
       "active": "সক্রিয়",
@@ -87,7 +87,7 @@
       "sku": "এসকেইউ",
       "options": "অপশন",
       "optionsHint": "যেমন size=M, color=White",
-      "variantPrice": "দাম (৳, ঐচ্ছিক)",
+      "variantPrice": "দাম ({symbol}, ঐচ্ছিক)",
       "stock": "স্টক",
       "addVariant": "ভ্যারিয়েন্ট যোগ করুন",
       "removeVariant": "সরান",
@@ -107,7 +107,25 @@
       "saveFailed": "পণ্য সংরক্ষণ করা যায়নি",
       "deleteConfirm": "এই পণ্য ও এর ছবিগুলো মুছবেন?",
       "backToList": "পণ্যের তালিকায় ফিরুন",
-      "noCategory": "ক্যাটাগরি নেই"
+      "noCategory": "ক্যাটাগরি নেই",
+      "deleteFailed": "পণ্যটি মোছা যায়নি"
+    },
+    "errors": {
+      "duplicateSku": "এই এসকেইউ আগেই অন্য ভ্যারিয়েন্টে ব্যবহৃত হয়েছে।",
+      "categoryInUse": "আগে এই ক্যাটাগরির পণ্যগুলো সরান বা মুছুন।",
+      "categoryHasChildren": "আগে উপ-ক্যাটাগরিগুলো সরান বা মুছুন।",
+      "invalidParent": "মূল ক্যাটাগরিটি সঠিক নয়।",
+      "invalidCategory": "ক্যাটাগরিটি পাওয়া যায়নি।",
+      "invalidVariant": "ভ্যারিয়েন্টটি এই পণ্যের নয়।",
+      "notFound": "পাওয়া যায়নি। রিফ্রেশ করে আবার চেষ্টা করুন।",
+      "unauthorized": "সেশন শেষ হয়েছে। আবার সাইন ইন করুন।",
+      "fileTooLarge": "ছবিটি অনেক বড় (প্রতি সাইজে সর্বোচ্চ ১ MB)।",
+      "invalidType": "আপলোড করা ফাইলটি WebP নয়।",
+      "missingFile": "ছবির একটি সাইজ অনুপস্থিত।",
+      "invalidProduct": "পণ্যটি পাওয়া যায়নি।",
+      "badOrigin": "অন্য সাইট থেকে আসা রিকোয়েস্ট ব্লক করা হয়েছে।",
+      "rateLimited": "অনেকবার চেষ্টা হয়েছে। পরে আবার চেষ্টা করুন।",
+      "adminNotConfigured": "এই ডিপ্লয়মেন্টে ADMIN_PASSPHRASE সেট করা নেই।"
     }
   }
 }

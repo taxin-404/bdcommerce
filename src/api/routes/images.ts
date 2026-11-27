@@ -30,6 +30,7 @@ imageRoutes.get('/*', async (c) => {
       'content-type': 'image/webp',
       'content-length': String(object.size),
       'cache-control': 'public, max-age=31536000, immutable',
+      'x-content-type-options': 'nosniff',
       etag,
     },
   });

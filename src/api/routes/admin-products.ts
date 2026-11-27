@@ -1,4 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
+import type { BatchItem } from 'drizzle-orm/batch';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -277,9 +278,14 @@ adminProductRoutes.post('/', zValidator('json', productInputSchema), async (c) =
   if (!created) throw new Error('Product insert returned no row');
 
   if (input.variants.length) {
-    await db
-      .insert(variants)
-      .values(input.variants.map((variant) => variantInsertValues(created.id, variant)));
+    try {
+      await db
+        .insert(variants)
+        .values(input.variants.map((variant) => variantInsertValues(created.id, variant)));
+    } catch (error) {
+      await db.delete(products).where(eq(products.id, created.id));
+      throw error;
+    }
   }
 
   const product = await loadProduct(db, created.id);
@@ -315,33 +321,7 @@ adminProductRoutes.patch(
       }
     }
 
-    const slug =
-      input.slug !== undefined
-        ? await uniqueProductSlug(
-            db,
-            slugify(input.slug ?? '') || fallbackSlug(input.title ?? existing.title),
-            id,
-          )
-        : existing.slug;
-
-    await db
-      .update(products)
-      .set({
-        slug,
-        title: input.title,
-        titleBn: input.title_bn,
-        description: input.description,
-        descriptionBn: input.description_bn,
-        categoryId: input.category_id,
-        price: input.price,
-        compareAtPrice: input.compare_at_price,
-        status: input.status,
-        trackStock: input.track_stock,
-        attributes: input.attributes,
-        featured: input.featured,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(products.id, id));
+    let removed: VariantRow[] = [];
 
     if (input.variants !== undefined) {
       const duplicateSku = firstDuplicateSku(input.variants.map((variant) => variant.sku));
@@ -372,34 +352,73 @@ adminProductRoutes.patch(
         }
       }
 
-      const keptIds = new Set<number>();
+      const keptIds = new Set(
+        input.variants.flatMap((variant) => (variant.id === undefined ? [] : [variant.id])),
+      );
+      removed = current.filter((variant) => !keptIds.has(variant.id));
+    }
 
+    const slug =
+      input.slug !== undefined
+        ? await uniqueProductSlug(
+            db,
+            slugify(input.slug ?? '') || fallbackSlug(input.title ?? existing.title),
+            id,
+          )
+        : existing.slug;
+
+    const statements: BatchItem<'sqlite'>[] = [
+      db
+        .update(products)
+        .set({
+          slug,
+          title: input.title,
+          titleBn: input.title_bn,
+          description: input.description,
+          descriptionBn: input.description_bn,
+          categoryId: input.category_id,
+          price: input.price,
+          compareAtPrice: input.compare_at_price,
+          status: input.status,
+          trackStock: input.track_stock,
+          attributes: input.attributes,
+          featured: input.featured,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(products.id, id)),
+    ];
+
+    if (input.variants !== undefined) {
       for (const variant of input.variants) {
         if (variant.id !== undefined) {
-          keptIds.add(variant.id);
-          await db
-            .update(variants)
-            .set({
-              sku: variant.sku,
-              title: variant.title,
-              options: variant.options,
-              price: variant.price,
-              stock: variant.stock,
-              active: variant.active,
-            })
-            .where(eq(variants.id, variant.id));
+          statements.push(
+            db
+              .update(variants)
+              .set({
+                sku: variant.sku,
+                title: variant.title,
+                options: variant.options,
+                price: variant.price,
+                stock: variant.stock,
+                active: variant.active,
+              })
+              .where(eq(variants.id, variant.id)),
+          );
         } else {
-          await db
-            .insert(variants)
-            .values(variantInsertValues(id, variant as z.infer<typeof variantInputSchema>));
+          statements.push(
+            db
+              .insert(variants)
+              .values(variantInsertValues(id, variant as z.infer<typeof variantInputSchema>)),
+          );
         }
       }
 
-      const removed = current.filter((variant) => !keptIds.has(variant.id));
       for (const variant of removed) {
-        await db.delete(variants).where(eq(variants.id, variant.id));
+        statements.push(db.delete(variants).where(eq(variants.id, variant.id)));
       }
     }
+
+    await db.batch(statements as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]);
 
     const product = await loadProduct(db, id);
     return c.json({ ok: true, data: product });

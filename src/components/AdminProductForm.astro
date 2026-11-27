@@ -1,6 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
 import type { AdminLocale } from '../lib/admin-locale';
+import { loadConfig } from '../lib/config';
 import { t } from '../lib/i18n';
 import { imageUrl } from '../lib/image';
 
@@ -47,6 +48,8 @@ interface Props {
 
 const { locale, product, categories } = Astro.props;
 const publicUrl = env.R2_PUBLIC_URL ?? '';
+const config = await loadConfig(env.DB);
+const currencySymbol = config.currency.symbol;
 
 function optionsToText(options: Record<string, string>): string {
   return Object.entries(options)
@@ -68,11 +71,15 @@ function attributesToText(attributes: Record<string, unknown>): string {
   data-saved={t(locale, 'admin.product.saved')}
   data-save-failed={t(locale, 'admin.product.saveFailed')}
   data-upload-failed={t(locale, 'admin.product.uploadFailed')}
+  data-uploading={t(locale, 'admin.product.uploading')}
+  data-delete-failed={t(locale, 'admin.product.deleteFailed')}
   data-delete-confirm={t(locale, 'admin.product.deleteConfirm')}
   data-delete-image-confirm={t(locale, 'admin.product.deleteImage')}
 >
   <section class="rounded-xl bg-white p-5 shadow-sm">
-    <h2 class="mb-4 text-lg font-medium">{t(locale, 'admin.product.edit')}</h2>
+    <h2 class="mb-4 text-lg font-medium">
+      {product ? t(locale, 'admin.product.edit') : t(locale, 'admin.product.new')}
+    </h2>
 
     <div class="grid gap-4 sm:grid-cols-2">
       <label class="block text-sm">
@@ -163,7 +170,9 @@ function attributesToText(attributes: Record<string, unknown>): string {
       </label>
 
       <label class="block text-sm">
-        <span class="mb-1 block font-medium">{t(locale, 'admin.product.price')}</span>
+        <span class="mb-1 block font-medium">
+          {t(locale, 'admin.product.price', { symbol: currencySymbol })}
+        </span>
         <input
           name="price"
           type="number"
@@ -176,7 +185,9 @@ function attributesToText(attributes: Record<string, unknown>): string {
       </label>
 
       <label class="block text-sm">
-        <span class="mb-1 block font-medium">{t(locale, 'admin.product.compareAtPrice')}</span>
+        <span class="mb-1 block font-medium">
+          {t(locale, 'admin.product.compareAtPrice', { symbol: currencySymbol })}
+        </span>
         <input
           name="compare_at_price"
           type="number"
@@ -240,7 +251,9 @@ function attributesToText(attributes: Record<string, unknown>): string {
             <th class="px-2 py-2">{t(locale, 'admin.product.variantTitle')}</th>
             <th class="px-2 py-2">{t(locale, 'admin.product.sku')}</th>
             <th class="px-2 py-2">{t(locale, 'admin.product.options')}</th>
-            <th class="px-2 py-2">{t(locale, 'admin.product.variantPrice')}</th>
+            <th class="px-2 py-2">
+              {t(locale, 'admin.product.variantPrice', { symbol: currencySymbol })}
+            </th>
             <th class="px-2 py-2">{t(locale, 'admin.product.stock')}</th>
             <th class="px-2 py-2"></th>
           </tr>
@@ -423,6 +436,8 @@ function attributesToText(attributes: Record<string, unknown>): string {
 </template>
 
 <script>
+  import { adminErrorMessage } from '../scripts/admin-errors';
+
   const form = document.getElementById('product-form') as HTMLFormElement | null;
   const variantRows = document.getElementById('variant-rows');
   const template = document.getElementById('variant-template') as HTMLTemplateElement | null;
@@ -519,11 +534,13 @@ function attributesToText(attributes: Record<string, unknown>): string {
       const payload = (await response.json().catch(() => null)) as {
         ok?: boolean;
         data?: { id: number };
-        error?: { message?: string };
+        error?: { code?: string };
       } | null;
 
       if (!response.ok || !payload?.ok) {
-        window.alert(payload?.error?.message ?? form.dataset.saveFailed ?? '');
+        window.alert(
+          adminErrorMessage(payload?.error?.code, form.dataset.saveFailed ?? ''),
+        );
         return;
       }
 
@@ -598,7 +615,7 @@ function attributesToText(attributes: Record<string, unknown>): string {
     if (!productId) return;
 
     uploadButton.disabled = true;
-    setUploadStatus('…');
+    setUploadStatus(form.dataset.uploading ?? '…');
 
     try {
       const file = fileInput.files[0];
@@ -623,9 +640,12 @@ function attributesToText(attributes: Record<string, unknown>): string {
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
+          error?: { code?: string };
         } | null;
-        setUploadStatus(payload?.error?.message ?? form.dataset.uploadFailed ?? '', true);
+        setUploadStatus(
+          adminErrorMessage(payload?.error?.code, form.dataset.uploadFailed ?? ''),
+          true,
+        );
         return;
       }
 
@@ -648,9 +668,11 @@ function attributesToText(attributes: Record<string, unknown>): string {
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
+          error?: { code?: string };
         } | null;
-        window.alert(payload?.error?.message ?? '');
+        window.alert(
+          adminErrorMessage(payload?.error?.code, form.dataset.deleteFailed ?? ''),
+        );
         return;
       }
 

@@ -111,15 +111,23 @@ adminImageRoutes.post('/upload', async (c) => {
 
   const alt = typeof body.alt === 'string' ? body.alt.trim().slice(0, 200) : null;
 
-  const [created] = await getDb(c.env.DB)
-    .insert(productImages)
-    .values({
-      productId: productId.data,
-      r2Key: baseKey,
-      alt: alt || null,
-      sort: Number(next?.next ?? 0),
-    })
-    .returning();
+  let created: typeof productImages.$inferSelect | undefined;
+  try {
+    [created] = await getDb(c.env.DB)
+      .insert(productImages)
+      .values({
+        productId: productId.data,
+        r2Key: baseKey,
+        alt: alt || null,
+        sort: Number(next?.next ?? 0),
+      })
+      .returning();
+  } catch (error) {
+    await c.env.IMAGES.delete(
+      IMAGE_SIZES.map((size) => imageVariantKey(baseKey, size)),
+    );
+    throw error;
+  }
 
   if (!created) throw new Error('Image insert returned no row');
 

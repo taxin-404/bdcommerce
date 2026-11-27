@@ -1,6 +1,7 @@
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const SESSION_INFO = encoder.encode('bdcommerce/admin-session/v1');
+const SALT_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 export const ADMIN_COOKIE_NAME = 'admin_session';
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -69,22 +70,27 @@ async function readSalt(db: D1Database): Promise<string | null> {
   return row?.value ?? null;
 }
 
+function isValidSalt(salt: string | null): salt is string {
+  return salt !== null && SALT_PATTERN.test(salt);
+}
+
 export async function readSessionSalt(db: D1Database): Promise<string | null> {
-  return readSalt(db);
+  const salt = await readSalt(db);
+  return isValidSalt(salt) ? salt : null;
 }
 
 export async function getOrCreateSessionSalt(db: D1Database): Promise<string> {
   const existing = await readSalt(db);
-  if (existing) return existing;
+  if (isValidSalt(existing)) return existing;
 
   const salt = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
   await db
-    .prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)')
+    .prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
     .bind('session_salt', salt)
     .run();
 
   const stored = await readSalt(db);
-  if (!stored) throw new Error('Could not create the session salt');
+  if (!isValidSalt(stored)) throw new Error('Could not create the session salt');
   return stored;
 }
 
@@ -163,7 +169,7 @@ export async function verifySessionCookie(
   const signature = cookieValue.slice(separator + 1);
   if (!payload || !signature) return null;
 
-  const salt = await readSalt(db);
+  const salt = await readSessionSalt(db);
   if (!salt) return null;
 
   const key = await deriveSessionKey(passphrase, salt);

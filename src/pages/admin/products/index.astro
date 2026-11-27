@@ -2,8 +2,10 @@
 import { env } from 'cloudflare:workers';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { resolveAdminLocale } from '../../../lib/admin-locale';
+import { loadConfig } from '../../../lib/config';
 import { t } from '../../../lib/i18n';
 import { imageUrl } from '../../../lib/image';
+import { formatBdt } from '../../../lib/money';
 
 const requested = Astro.url.searchParams.get('lang');
 if (requested === 'bn' || requested === 'en') {
@@ -14,6 +16,7 @@ if (requested === 'bn' || requested === 'en') {
   });
 }
 const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+const config = await loadConfig(env.DB);
 
 const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
 const statusParam = Astro.url.searchParams.get('status') ?? '';
@@ -68,7 +71,12 @@ const { results: products } = await env.DB.prepare(
     </a>
   </div>
 
-  <form method="get" class="mb-4 flex flex-wrap gap-2" data-delete-confirm={t(locale, 'admin.product.deleteConfirm')}>
+  <form
+    method="get"
+    class="mb-4 flex flex-wrap gap-2"
+    data-delete-confirm={t(locale, 'admin.product.deleteConfirm')}
+    data-delete-failed={t(locale, 'admin.product.deleteFailed')}
+  >
     <input
       type="search"
       name="q"
@@ -90,13 +98,15 @@ const { results: products } = await env.DB.prepare(
     </button>
   </form>
 
-  <section class="overflow-hidden rounded-xl bg-white shadow-sm">
+  <section class="overflow-x-auto rounded-xl bg-white shadow-sm">
     <table class="w-full text-left text-sm">
       <thead class="bg-slate-50 text-xs uppercase text-slate-500">
         <tr>
           <th class="px-4 py-3">{t(locale, 'admin.product.title')}</th>
           <th class="px-4 py-3">{t(locale, 'admin.product.category')}</th>
-          <th class="px-4 py-3">{t(locale, 'admin.product.price')}</th>
+          <th class="px-4 py-3">
+            {t(locale, 'admin.product.price', { symbol: config.currency.symbol })}
+          </th>
           <th class="px-4 py-3">{t(locale, 'admin.product.status')}</th>
           <th class="px-4 py-3">{t(locale, 'admin.category.actions')}</th>
         </tr>
@@ -144,7 +154,13 @@ const { results: products } = await env.DB.prepare(
                 <td class="px-4 py-3 text-slate-600">
                   {product.category_name ?? t(locale, 'admin.product.noCategory')}
                 </td>
-                <td class="px-4 py-3">৳{product.price}</td>
+                <td class="px-4 py-3">
+                  {formatBdt(product.price, {
+                    locale,
+                    symbol: config.currency.symbol,
+                    bnDigits: config.currency.bnDigits,
+                  })}
+                </td>
                 <td class="px-4 py-3">
                   <span
                     class:list={[
@@ -186,6 +202,8 @@ const { results: products } = await env.DB.prepare(
 </AdminLayout>
 
 <script>
+  import { adminErrorMessage } from '../../../scripts/admin-errors';
+
   const filterForm = document.querySelector<HTMLFormElement>('form[method="get"]');
 
   document.querySelectorAll<HTMLButtonElement>('.js-delete').forEach((button) => {
@@ -199,9 +217,11 @@ const { results: products } = await env.DB.prepare(
 
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
+          error?: { code?: string };
         } | null;
-        window.alert(data?.error?.message ?? '');
+        window.alert(
+          adminErrorMessage(data?.error?.code, filterForm?.dataset.deleteFailed ?? ''),
+        );
         return;
       }
 

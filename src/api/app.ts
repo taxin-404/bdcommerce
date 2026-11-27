@@ -7,6 +7,13 @@ import { imageRoutes } from './routes/images';
 export const app = new Hono<AdminEnv>();
 
 app.route('/api', healthRoutes);
+
+app.use('/api/admin/*', async (c, next) => {
+  await next();
+  c.header('Cache-Control', 'no-store');
+  c.header('X-Content-Type-Options', 'nosniff');
+});
+
 app.route('/api/admin', adminRoutes);
 app.route('/img', imageRoutes);
 

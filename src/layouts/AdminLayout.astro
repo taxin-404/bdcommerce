@@ -13,7 +13,29 @@ interface Props {
 const { title, locale, current } = Astro.props;
 const otherLocale: AdminLocale = locale === 'bn' ? 'en' : 'bn';
 const langHref = `${Astro.url.pathname}?lang=${otherLocale}`;
-const showR2Banner = !env.R2_PUBLIC_URL;
+const showR2Banner = !env.R2_PUBLIC_URL?.trim();
+
+const errorCodes = [
+  'duplicateSku',
+  'categoryInUse',
+  'categoryHasChildren',
+  'invalidParent',
+  'invalidCategory',
+  'invalidVariant',
+  'notFound',
+  'unauthorized',
+  'fileTooLarge',
+  'invalidType',
+  'missingFile',
+  'invalidProduct',
+  'badOrigin',
+  'rateLimited',
+  'adminNotConfigured',
+] as const;
+const adminErrors = Object.fromEntries(
+  errorCodes.map((code) => [code, t(locale, `admin.errors.${code}`)]),
+);
+const adminErrorsJson = JSON.stringify(adminErrors).replace(/</g, '\\u003c');
 
 const navItems = [
   { key: 'dashboard', href: '/admin', label: t(locale, 'admin.dashboard') },
@@ -76,6 +98,8 @@ const navItems = [
     <main class="mx-auto max-w-5xl px-4 py-6">
       <slot />
     </main>
+
+    <script type="application/json" id="admin-error-messages" set:html={adminErrorsJson} />
 
     <script>
       const logout = document.getElementById('admin-logout');

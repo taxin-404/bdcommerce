@@ -26,9 +26,9 @@ function fakeDb(initial = new Map<string, string>()) {
               return null;
             },
             async run() {
-              if (sql.includes('INSERT OR IGNORE INTO settings')) {
+              if (sql.includes('INSERT') && sql.includes('INTO settings')) {
                 const [key, value] = args as [string, string];
-                if (!store.has(key)) store.set(key, value);
+                if (sql.includes('OR REPLACE') || !store.has(key)) store.set(key, value);
               }
               return { success: true };
             },
@@ -70,10 +70,28 @@ describe('constantTimeEqual', () => {
 });
 
 describe('session salt', () => {
-  it('reads an existing salt', async () => {
-    const { db } = fakeDb(new Map([['session_salt', 'abc']]));
+  const validSalt = 'A'.repeat(43);
 
-    expect(await readSessionSalt(db)).toBe('abc');
+  it('reads a valid existing salt', async () => {
+    const { db } = fakeDb(new Map([['session_salt', validSalt]]));
+
+    expect(await readSessionSalt(db)).toBe(validSalt);
+  });
+
+  it('ignores a corrupt salt instead of throwing', async () => {
+    const { db } = fakeDb(new Map([['session_salt', 'not a valid salt']]));
+
+    expect(await readSessionSalt(db)).toBeNull();
+    expect(await verifySessionCookie('a.b', db, 'passphrase')).toBeNull();
+  });
+
+  it('replaces a corrupt salt on the next login', async () => {
+    const { db, store } = fakeDb(new Map([['session_salt', 'broken']]));
+
+    const salt = await getOrCreateSessionSalt(db);
+
+    expect(salt).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(store.get('session_salt')).toBe(salt);
   });
 
   it('creates and persists a salt on first use', async () => {

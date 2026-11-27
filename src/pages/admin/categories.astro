@@ -132,7 +132,7 @@ const nameById = new Map(categories.map((category) => [category.id, category.nam
     </form>
   </section>
 
-  <section class="overflow-hidden rounded-xl bg-white shadow-sm">
+  <section class="overflow-x-auto rounded-xl bg-white shadow-sm">
     <table class="w-full text-left text-sm">
       <thead class="bg-slate-50 text-xs uppercase text-slate-500">
         <tr>
@@ -200,6 +200,8 @@ const nameById = new Map(categories.map((category) => [category.id, category.nam
 </AdminLayout>
 
 <script>
+  import { adminErrorMessage } from '../../scripts/admin-errors';
+
   const form = document.getElementById('category-form') as HTMLFormElement | null;
   const title = document.getElementById('form-title');
   const reset = document.getElementById('category-reset');
@@ -249,9 +251,11 @@ const nameById = new Map(categories.map((category) => [category.id, category.nam
 
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
+          error?: { code?: string };
         } | null;
-        window.alert(data?.error?.message ?? form.dataset.saveFailed ?? '');
+        window.alert(
+          adminErrorMessage(data?.error?.code, form.dataset.saveFailed ?? ''),
+        );
         return;
       }
 
@@ -295,9 +299,11 @@ const nameById = new Map(categories.map((category) => [category.id, category.nam
 
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
+          error?: { code?: string };
         } | null;
-        window.alert(data?.error?.message ?? form.dataset.deleteFailed ?? '');
+        window.alert(
+          adminErrorMessage(data?.error?.code, form.dataset.deleteFailed ?? ''),
+        );
         return;
       }
 
