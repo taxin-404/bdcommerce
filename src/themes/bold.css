@@ -1,0 +1,10 @@
+[data-theme='bold'] {
+  --color-bg: #fefce8;
+  --color-surface: #ffffff;
+  --color-text: #111827;
+  --color-muted: #4b5563;
+  --color-border: #fde68a;
+  --color-primary-contrast: #ffffff;
+  --color-accent-contrast: #111827;
+  --shadow-card: 0 2px 0 #111827;
+}

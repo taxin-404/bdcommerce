@@ -8,6 +8,7 @@ const config = {
   },
   logo: '/logo.svg',
   theme: {
+    preset: 'clean',
     primary: '#0f766e',
     accent: '#f59e0b',
     radius: '0.75rem',

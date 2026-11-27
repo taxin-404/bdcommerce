@@ -1,1 +1,65 @@
 @import "tailwindcss";
+@import "../themes/index.css";
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family), "Noto Sans Bengali", system-ui, sans-serif;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-radius: var(--radius);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+.text-muted {
+  color: var(--color-muted);
+}
+
+.badge-accent {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+.variant-option {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.variant-option[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+.thumb-option {
+  border: 1px solid var(--color-border);
+}
+
+.thumb-option:hover {
+  border-color: var(--color-primary);
+}
+
+#product-stock[data-state='in'] {
+  color: #047857;
+}
+
+#product-stock[data-state='low'] {
+  color: #b45309;
+}
+
+#product-stock[data-state='out'] {
+  color: #be123c;
+}

@@ -6,11 +6,28 @@ const localizedTextSchema = z.object({
   bn: z.string(),
 });
 
+const safePathOrUrl = z
+  .string()
+  .refine(
+    (value) =>
+      value === '' ||
+      ((value.startsWith('/') || value.startsWith('./')) &&
+        !value.startsWith('//') &&
+        !value.startsWith('/\\')) ||
+      /^https?:\/\//i.test(value),
+    'Expected a site-relative path or an http(s) URL',
+  );
+
+const themePresetSchema = z.enum(['clean', 'bold', 'soft', 'dark']);
+
 const themeSchema = z.object({
+  preset: themePresetSchema.default('clean'),
   primary: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Expected a 6-digit hex colour'),
   accent: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Expected a 6-digit hex colour'),
-  radius: z.string(),
-  font: z.string(),
+  radius: z
+    .string()
+    .regex(/^(?:0|\d+(?:\.\d+)?(?:px|rem|em))$/, 'Expected a CSS length such as 0.75rem'),
+  font: z.string().regex(/^[A-Za-z0-9 ,'-]+$/, 'Expected a font family name'),
 });
 
 const localeSchema = z
@@ -64,10 +81,10 @@ const paymentsSchema = z.object({
 });
 
 const socialSchema = z.object({
-  facebook: z.string(),
-  messenger: z.string(),
-  whatsapp: z.string(),
-  instagram: z.string(),
+  facebook: safePathOrUrl,
+  messenger: safePathOrUrl,
+  whatsapp: safePathOrUrl,
+  instagram: safePathOrUrl,
 });
 
 const trackingSchema = z.object({
@@ -84,7 +101,7 @@ const contactSchema = z.object({
 export const siteConfigSchema = z.object({
   name: localizedTextSchema,
   tagline: localizedTextSchema,
-  logo: z.string(),
+  logo: safePathOrUrl,
   theme: themeSchema,
   locale: localeSchema,
   currency: currencySchema,
@@ -145,18 +162,22 @@ function parseOverride(row: {
   return { key: row.key, value: parsed };
 }
 
-export async function loadConfig(db: D1Database): Promise<SiteConfig> {
-  const { results } = await db
-    .prepare('SELECT key, value FROM settings')
-    .all<{ key: string; value: string }>();
-
+export function loadConfigFromRows(rows: { key: string; value: string }[]): SiteConfig {
   const overrides: Record<string, unknown> = {};
-  for (const row of results) {
+  for (const row of rows) {
     const override = parseOverride(row);
     if (override) overrides[override.key] = override.value;
   }
 
   return mergeConfig(defaultConfig, overrides);
+}
+
+export async function loadConfig(db: D1Database): Promise<SiteConfig> {
+  const { results } = await db
+    .prepare('SELECT key, value FROM settings')
+    .all<{ key: string; value: string }>();
+
+  return loadConfigFromRows(results);
 }
 
 export { defaultConfig };

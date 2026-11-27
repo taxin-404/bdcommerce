@@ -6,6 +6,7 @@ import { loadConfig } from '../../../lib/config';
 import { t } from '../../../lib/i18n';
 import { imageUrl } from '../../../lib/image';
 import { formatBdt } from '../../../lib/money';
+import { buildFtsQuery } from '../../../lib/search';
 
 const requested = Astro.url.searchParams.get('lang');
 if (requested === 'bn' || requested === 'en') {
@@ -24,14 +25,21 @@ const status = ['draft', 'active', 'archived'].includes(statusParam) ? statusPar
 
 const where: string[] = [];
 const bindings: unknown[] = [];
+let from = 'FROM products p LEFT JOIN categories c ON c.id = p.category_id';
+
 if (status) {
   where.push('p.status = ?');
   bindings.push(status);
 }
 if (q) {
-  where.push('(p.title LIKE ? OR p.title_bn LIKE ? OR p.slug LIKE ?)');
-  const like = `%${q}%`;
-  bindings.push(like, like, like);
+  const ftsQuery = buildFtsQuery(q);
+  if (!ftsQuery) {
+    where.push('0 = 1');
+  } else {
+    from = 'FROM products p JOIN product_fts ON product_fts.rowid = p.id LEFT JOIN categories c ON c.id = p.category_id';
+    where.push('product_fts MATCH ?');
+    bindings.push(ftsQuery);
+  }
 }
 
 const { results: products } = await env.DB.prepare(
@@ -39,8 +47,7 @@ const { results: products } = await env.DB.prepare(
           c.name AS category_name,
           (SELECT i.r2_key FROM product_images i
             WHERE i.product_id = p.id ORDER BY i.sort, i.id LIMIT 1) AS image_key
-     FROM products p
-     LEFT JOIN categories c ON c.id = p.category_id
+     ${from}
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY p.updated_at DESC, p.id DESC
     LIMIT 100`,

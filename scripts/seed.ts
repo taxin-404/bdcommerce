@@ -207,6 +207,7 @@ function buildSeedSql(timestamp: string): string {
     // Reset the catalog only. Orders, settings, coupons, and the blocklist are preserved.
     'DELETE FROM product_images;',
     'DELETE FROM variants;',
+    'DELETE FROM product_fts;',
     'DELETE FROM products;',
     'DELETE FROM categories WHERE parent_id IS NOT NULL;',
     'DELETE FROM categories;',
@@ -227,6 +228,16 @@ function buildSeedSql(timestamp: string): string {
   for (const variant of variants) {
     statements.push(
       `INSERT INTO variants (id, product_id, sku, title, options, price, stock, active) VALUES (${variant.id}, ${variant.productId}, ${quote(variant.sku)}, ${quote(variant.title)}, ${json(variant.options)}, ${quote(variant.price)}, ${variant.stock}, 1);`,
+    );
+  }
+
+  for (const product of products) {
+    const skus = variants
+      .filter((variant) => variant.productId === product.id)
+      .map((variant) => variant.sku)
+      .join(' ');
+    statements.push(
+      `INSERT INTO product_fts (rowid, title, title_bn, description, description_bn, skus) VALUES (${product.id}, ${quote(product.title)}, ${quote(product.titleBn)}, ${quote(product.description)}, ${quote(product.descriptionBn)}, ${quote(skus)});`,
     );
   }
 

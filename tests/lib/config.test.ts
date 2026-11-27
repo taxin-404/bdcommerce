@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import defaultConfig from '../../site.config';
 import { loadConfig, mergeConfig } from '../../src/lib/config';
+import { themeStyle } from '../../src/lib/theme';
 
 function fakeDb(rows: { key: string; value: string }[]): D1Database {
   return {
@@ -95,5 +96,58 @@ describe('loadConfig', () => {
 
     expect(config.theme.primary).toBe('#123456');
     expect(config.shipping.zones).toEqual(defaultConfig.shipping.zones);
+  });
+});
+
+describe('theme presets', () => {
+  it('accepts each supported preset', () => {
+    for (const preset of ['clean', 'bold', 'soft', 'dark'] as const) {
+      expect(mergeConfig(defaultConfig, { theme: { preset } }).theme.preset).toBe(preset);
+    }
+  });
+
+  it('defaults to the clean preset', () => {
+    expect(defaultConfig.theme.preset).toBe('clean');
+  });
+
+  it('rejects an unknown preset', () => {
+    expect(() => mergeConfig(defaultConfig, { theme: { preset: 'neon' } })).toThrow();
+  });
+
+  it('rejects unsafe radius and font values', () => {
+    expect(() => mergeConfig(defaultConfig, { theme: { radius: '1rem;}body{display:none' } })).toThrow();
+    expect(() => mergeConfig(defaultConfig, { theme: { font: 'Inter;}</style><script>' } })).toThrow();
+  });
+});
+
+describe('themeStyle', () => {
+  it('builds the inline CSS variables from config', () => {
+    expect(themeStyle(defaultConfig.theme)).toBe(
+      '--color-primary:#0f766e;--color-accent:#f59e0b;--radius:0.75rem;--font-family:Hind Siliguri',
+    );
+  });
+});
+
+describe('storefront URL safety', () => {
+  it('accepts empty, site-relative, and https social links', () => {
+    const config = mergeConfig(defaultConfig, {
+      logo: '/brand.svg',
+      social: {
+        facebook: 'https://facebook.com/shop',
+        messenger: 'https://m.me/shop',
+        whatsapp: '',
+        instagram: '',
+      },
+    });
+
+    expect(config.logo).toBe('/brand.svg');
+    expect(config.social.facebook).toBe('https://facebook.com/shop');
+  });
+
+  it('rejects javascript: and protocol-relative URLs', () => {
+    expect(() =>
+      mergeConfig(defaultConfig, { social: { facebook: 'javascript:alert(1)' } }),
+    ).toThrow();
+    expect(() => mergeConfig(defaultConfig, { logo: '//evil.example/x.svg' })).toThrow();
   });
 });

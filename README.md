@@ -5,7 +5,7 @@
 A free-tier, config-driven e-commerce template for small Bangladeshi businesses.
 Built with Astro SSR, Hono, D1, and R2 on Cloudflare Workers.
 
-**Status:** Phase 2 — admin auth, category/product management, and R2 images.
+**Status:** Phase 3 — storefront catalog, search, themes, and home sections.
 
 ## One-click deploy
 
@@ -65,6 +65,37 @@ domain). When it is empty, the `/img/*` Worker route streams the same objects
 with `Cache-Control: public, max-age=31536000, immutable` and the admin shows a
 banner recommending public R2 access. Serving straight from R2 keeps image
 traffic off the Worker request budget.
+
+## Storefront
+
+- `/` — section-based home page from `settings.home_sections`
+- `/shop` — category filter, newest/price sort, keyset pagination, and FTS5 search
+- `/p/[slug]` — image gallery, variant selector, stock state, and JSON-LD Product data
+- `/404` — friendly not-found page
+
+Search uses the `product_fts` FTS5 table. Admin product create, update, and delete
+rebuild the row for that product, and draft/archived products are removed from the
+index. `pnpm db:seed` also repopulates the index. Category filters include the
+selected category plus its direct children. Listing pagination is keyset-based
+(cursor), never `OFFSET`.
+
+### Themes
+
+Set `theme.preset` in `site.config.ts` to `clean`, `bold`, `soft`, or `dark`. The
+presets live as CSS-variable sets in `src/themes/`; `theme.primary`, `theme.accent`,
+`theme.radius`, and `theme.font` still come from config and are validated before
+they reach an inline style. A `theme` row in the `settings` table can override
+individual fields, including the preset.
+
+### Home sections
+
+`settings.home_sections` holds an ordered JSON array. Supported types are
+`announcement`, `hero`, `categories`, `featured`, `new`, `banner`, `trust`,
+`testimonials`, and `faq`. Missing or invalid JSON falls back to the defaults in
+`src/lib/sections.ts`. Links are restricted to site-relative paths or `http(s)` URLs.
+
+In development, `pnpm exec astro dev logs` shows the query count per page
+(`[queries] home: 4`, `[queries] shop: 3`, `[queries] product: 4`).
 
 ## Scripts
 

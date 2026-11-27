@@ -1,0 +1,365 @@
+---
+import { env } from 'cloudflare:workers';
+import StorefrontLayout from '../../layouts/StorefrontLayout.astro';
+import { t } from '../../lib/i18n';
+import { imageUrl } from '../../lib/image';
+import { pickLocalized, resolveLocale } from '../../lib/locale';
+import { formatBdt, toBanglaDigits } from '../../lib/money';
+import { countCalls, logQueryCount } from '../../lib/query-log';
+import { buildProductJsonLd, serializeJsonLd } from '../../lib/structured-data';
+import { loadStorefront } from '../../lib/storefront';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+
+const { value: db, count } = countCalls(env.DB);
+const { config } = await loadStorefront(db);
+const locale = resolveLocale(
+  config.locale.default,
+  config.locale.available,
+  requested,
+  Astro.cookies.get('locale')?.value,
+);
+
+const slug = Astro.params.slug ?? '';
+if (!/^[a-z0-9-]{1,100}$/.test(slug)) return Astro.rewrite('/404');
+
+interface ProductRow {
+  id: number;
+  slug: string;
+  title: string;
+  title_bn: string | null;
+  description: string | null;
+  description_bn: string | null;
+  category_id: number | null;
+  price: number;
+  compare_at_price: number | null;
+  track_stock: number;
+  attributes: string | null;
+  category_slug: string | null;
+  category_name: string | null;
+  category_name_bn: string | null;
+}
+
+const product = await db
+  .prepare(
+    `SELECT p.id, p.slug, p.title, p.title_bn, p.description, p.description_bn,
+            p.category_id, p.price, p.compare_at_price, p.track_stock, p.attributes,
+            c.slug AS category_slug, c.name AS category_name, c.name_bn AS category_name_bn
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+      WHERE p.slug = ? AND p.status = 'active'
+      LIMIT 1`,
+  )
+  .bind(slug)
+  .first<ProductRow>();
+
+if (!product) return Astro.rewrite('/404');
+
+const { results: variants } = await db
+  .prepare(
+    `SELECT id, sku, title, options, price, stock, active
+       FROM variants
+      WHERE product_id = ? AND active = 1
+      ORDER BY id`,
+  )
+  .bind(product.id)
+  .all<{
+    id: number;
+    sku: string | null;
+    title: string;
+    options: string | null;
+    price: number | null;
+    stock: number;
+    active: number;
+  }>();
+
+const { results: images } = await db
+  .prepare(
+    `SELECT id, r2_key, alt, sort
+       FROM product_images
+      WHERE product_id = ?
+      ORDER BY sort, id`,
+  )
+  .bind(product.id)
+  .all<{ id: number; r2_key: string; alt: string | null; sort: number }>();
+
+logQueryCount('product', count());
+
+const publicUrl = env.R2_PUBLIC_URL ?? '';
+const title = pickLocalized(product.title, product.title_bn, locale);
+const description = pickLocalized(product.description, product.description_bn, locale);
+const categoryName = product.category_name
+  ? pickLocalized(product.category_name, product.category_name_bn, locale)
+  : null;
+
+let attributes: Record<string, string> = {};
+if (product.attributes) {
+  try {
+    const parsed = JSON.parse(product.attributes) as unknown;
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      attributes = Object.fromEntries(
+        Object.entries(parsed as Record<string, unknown>).map(([key, value]) => [
+          key,
+          String(value),
+        ]),
+      );
+    }
+  } catch {
+    attributes = {};
+  }
+}
+
+const variantsWithPrice = variants.map((variant) => {
+  const price = variant.price ?? product.price;
+  return {
+    ...variant,
+    price,
+    stockLabel:
+      variant.stock <= 0
+        ? t(locale, 'storefront.outOfStock')
+        : variant.stock <= 5
+          ? t(locale, 'storefront.lowStock', {
+              count:
+                locale === 'bn' && config.currency.bnDigits
+                  ? toBanglaDigits(variant.stock)
+                  : variant.stock,
+            })
+          : t(locale, 'storefront.inStock'),
+    stockState: variant.stock <= 0 ? 'out' : variant.stock <= 5 ? 'low' : 'in',
+  };
+});
+
+const defaultVariant =
+  variantsWithPrice.find((variant) => variant.stock > 0) ?? variantsWithPrice[0];
+const totalStock = variants.reduce((sum, variant) => sum + variant.stock, 0);
+const inStock = variants.length === 0 || totalStock > 0;
+
+const money = (amount: number) =>
+  formatBdt(amount, {
+    locale,
+    symbol: config.currency.symbol,
+    bnDigits: config.currency.bnDigits,
+  });
+
+const mainImage = images[0]
+  ? imageUrl(images[0].r2_key, 'md', publicUrl)
+  : '/placeholder.svg';
+const mainImageLarge = images[0]
+  ? imageUrl(images[0].r2_key, 'full', publicUrl)
+  : '/placeholder.svg';
+
+const canonical = new URL(`/p/${product.slug}`, Astro.url.origin).href;
+const jsonLdImages = images.length
+  ? images.map((image) =>
+      new URL(imageUrl(image.r2_key, 'md', publicUrl), Astro.url.origin).href,
+    )
+  : [new URL('/placeholder.svg', Astro.url.origin).href];
+const jsonLd = serializeJsonLd(
+  buildProductJsonLd({
+    name: title,
+    description,
+    url: canonical,
+    images: jsonLdImages,
+    sku: variants[0]?.sku ?? `SKU-${product.id}`,
+    brand: config.name.en,
+    price: product.price,
+    currency: config.currency.code,
+    inStock,
+  }),
+);
+
+const shopName = config.name[locale] || config.name.en;
+---
+
+<StorefrontLayout title={`${title} · ${shopName}`} description={description} locale={locale} config={config}>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={jsonLd} />
+  </Fragment>
+
+  <nav aria-label="Breadcrumb" class="text-muted mb-4 flex flex-wrap gap-1 text-sm">
+    <a href="/" class="hover:text-[var(--color-primary)]">{t(locale, 'storefront.breadcrumbHome')}</a>
+    <span aria-hidden="true">/</span>
+    <a href="/shop" class="hover:text-[var(--color-primary)]">{t(locale, 'storefront.breadcrumbShop')}</a>
+    {categoryName && product.category_slug && (
+      <>
+        <span aria-hidden="true">/</span>
+        <a
+          href={`/shop?category=${product.category_slug}`}
+          class="hover:text-[var(--color-primary)]"
+        >
+          {categoryName}
+        </a>
+      </>
+    )}
+  </nav>
+
+  <div class="grid gap-8 lg:grid-cols-2">
+    <section aria-label={title}>
+      <a href={mainImageLarge} class="card block overflow-hidden" target="_blank" rel="noopener">
+        <img
+          id="product-image"
+          src={mainImage}
+          alt={images[0]?.alt || title}
+          width="800"
+          height="800"
+          fetchpriority="high"
+          decoding="async"
+          class="aspect-square w-full object-cover"
+        />
+      </a>
+
+      {images.length > 1 && (
+        <div class="mt-3 grid grid-cols-4 gap-2">
+          {images.map((image) => (
+            <button
+              type="button"
+              class="thumb-option card overflow-hidden"
+              data-src={imageUrl(image.r2_key, 'md', publicUrl)}
+              data-alt={image.alt || title}
+              aria-label={image.alt || title}
+            >
+              <img
+                src={imageUrl(image.r2_key, 'thumb', publicUrl)}
+                alt=""
+                width="200"
+                height="200"
+                loading="lazy"
+                decoding="async"
+                class="aspect-square w-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+
+    <section>
+      <h1 class="text-2xl font-semibold sm:text-3xl">{title}</h1>
+
+      <p class="mt-3 flex flex-wrap items-baseline gap-3">
+        <span id="product-price" class="text-2xl font-bold text-[var(--color-primary)]">
+          {money(defaultVariant?.price ?? product.price)}
+        </span>
+        {product.compare_at_price !== null && product.compare_at_price > product.price && (
+          <span class="text-muted text-sm line-through">{money(product.compare_at_price)}</span>
+        )}
+      </p>
+
+      <p class="mt-2 text-sm">
+        <span class="text-muted">{t(locale, 'storefront.sku')}:</span>
+        <span id="product-sku" class="font-mono">{defaultVariant?.sku ?? `SKU-${product.id}`}</span>
+      </p>
+
+      <p class="mt-2 text-sm">
+        {variants.length > 0 ? (
+          <span
+            id="product-stock"
+            data-state={defaultVariant?.stockState ?? 'in'}
+            class="font-medium"
+          >
+            {defaultVariant?.stockLabel ?? t(locale, 'storefront.inStock')}
+          </span>
+        ) : (
+          <span
+            id="product-stock"
+            data-state={inStock ? 'in' : 'out'}
+            class="font-medium"
+          >
+            {inStock ? t(locale, 'storefront.inStock') : t(locale, 'storefront.outOfStock')}
+          </span>
+        )}
+      </p>
+
+      {variantsWithPrice.length > 0 && (
+        <div class="mt-6">
+          <p class="mb-2 text-sm font-medium">{t(locale, 'storefront.chooseVariant')}</p>
+          <div id="variant-picker" class="flex flex-wrap gap-2">
+            {variantsWithPrice.map((variant) => (
+              <button
+                type="button"
+                class="variant-option rounded-[var(--radius)] px-3 py-2 text-sm"
+                aria-pressed={defaultVariant?.id === variant.id ? 'true' : 'false'}
+                data-variant-id={variant.id}
+                data-price-label={money(variant.price)}
+                data-stock-label={variant.stockLabel}
+                data-stock-state={variant.stockState}
+                data-sku={variant.sku ?? ''}
+              >
+                {variant.title}
+              </button>
+            ))}
+          </div>
+          <input
+            type="hidden"
+            id="selected-variant"
+            name="variant_id"
+            value={defaultVariant?.id ?? ''}
+          />
+        </div>
+      )}
+
+      {description && (
+        <section class="mt-8">
+          <h2 class="text-lg font-semibold">{t(locale, 'storefront.description')}</h2>
+          <p class="text-muted mt-2 whitespace-pre-line text-sm leading-6">{description}</p>
+        </section>
+      )}
+
+      {Object.keys(attributes).length > 0 && (
+        <section class="mt-6">
+          <h2 class="text-lg font-semibold">{t(locale, 'storefront.details')}</h2>
+          <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+            {Object.entries(attributes).map(([key, value]) => (
+              <>
+                <dt class="text-muted capitalize">{key.replaceAll('_', ' ')}</dt>
+                <dd>{value}</dd>
+              </>
+            ))}
+          </dl>
+        </section>
+      )}
+    </section>
+  </div>
+</StorefrontLayout>
+
+<script>
+  const mainImage = document.getElementById('product-image') as HTMLImageElement | null;
+
+  document.querySelectorAll<HTMLButtonElement>('.thumb-option').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (!mainImage) return;
+      const src = button.dataset.src;
+      const alt = button.dataset.alt;
+      if (src) mainImage.src = src;
+      if (alt) mainImage.alt = alt;
+    });
+  });
+
+  const price = document.getElementById('product-price');
+  const stock = document.getElementById('product-stock');
+  const sku = document.getElementById('product-sku');
+  const selected = document.getElementById('selected-variant') as HTMLInputElement | null;
+  const options = document.querySelectorAll<HTMLButtonElement>('.variant-option');
+
+  options.forEach((button) => {
+    button.addEventListener('click', () => {
+      options.forEach((option) => option.setAttribute('aria-pressed', 'false'));
+      button.setAttribute('aria-pressed', 'true');
+
+      if (price) price.textContent = button.dataset.priceLabel ?? price.textContent;
+      if (stock) {
+        stock.textContent = button.dataset.stockLabel ?? stock.textContent;
+        stock.dataset.state = button.dataset.stockState ?? 'in';
+      }
+      if (sku) sku.textContent = button.dataset.sku || sku.textContent;
+      if (selected) selected.value = button.dataset.variantId ?? selected.value;
+    });
+  });
+</script>

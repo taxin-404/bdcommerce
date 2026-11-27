@@ -1,0 +1,73 @@
+---
+import type { SiteConfig } from '../lib/config';
+import type { Locale } from '../lib/i18n';
+import { t } from '../lib/i18n';
+import { imageUrl } from '../lib/image';
+import { pickLocalized } from '../lib/locale';
+import { formatBdt } from '../lib/money';
+
+export interface ProductCardData {
+  id: number;
+  slug: string;
+  title: string;
+  title_bn: string | null;
+  price: number;
+  compare_at_price: number | null;
+  image_key: string | null;
+  featured: number | boolean;
+}
+
+interface Props {
+  product: ProductCardData;
+  locale: Locale;
+  config: SiteConfig;
+  publicUrl: string;
+}
+
+const { product, locale, config, publicUrl } = Astro.props;
+const title = pickLocalized(product.title, product.title_bn, locale);
+const image = product.image_key
+  ? imageUrl(product.image_key, 'thumb', publicUrl)
+  : '/placeholder.svg';
+const hasCompareAt =
+  product.compare_at_price !== null && product.compare_at_price > product.price;
+const money = (amount: number) =>
+  formatBdt(amount, {
+    locale,
+    symbol: config.currency.symbol,
+    bnDigits: config.currency.bnDigits,
+  });
+---
+
+<article class="card group overflow-hidden">
+  <a href={`/p/${product.slug}`} class="block">
+    <img
+      src={image}
+      alt={title}
+      width="400"
+      height="400"
+      loading="lazy"
+      decoding="async"
+      class="aspect-square w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+    />
+  </a>
+
+  <div class="space-y-1 p-3">
+    {product.featured ? (
+      <span class="badge-accent inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold">
+        {t(locale, 'storefront.featured')}
+      </span>
+    ) : null}
+
+    <h3 class="line-clamp-2 text-sm font-medium">
+      <a href={`/p/${product.slug}`} class="hover:text-[var(--color-primary)]">{title}</a>
+    </h3>
+
+    <p class="flex flex-wrap items-baseline gap-2">
+      <span class="font-semibold text-[var(--color-primary)]">{money(product.price)}</span>
+      {hasCompareAt && (
+        <span class="text-muted text-xs line-through">{money(product.compare_at_price ?? 0)}</span>
+      )}
+    </p>
+  </div>
+</article>

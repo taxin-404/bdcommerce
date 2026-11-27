@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { getDb } from '../../db/client';
 import { productImages, products, variants } from '../../db/schema';
 import { imageVariantKey } from '../../lib/image';
+import { deleteProductFts, syncProductFts } from '../../lib/search';
+import { buildFtsQuery } from '../../lib/search';
 import { slugify } from '../../lib/slug';
 import {
   idParamSchema,
@@ -173,6 +175,7 @@ adminProductRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
 
   const where: string[] = [];
   const bindings: unknown[] = [];
+  let from = 'FROM products p LEFT JOIN categories c ON c.id = p.category_id';
 
   if (status) {
     where.push('p.status = ?');
@@ -183,9 +186,14 @@ adminProductRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
     bindings.push(category);
   }
   if (q) {
-    where.push('(p.title LIKE ? OR p.title_bn LIKE ? OR p.slug LIKE ?)');
-    const like = `%${q}%`;
-    bindings.push(like, like, like);
+    const ftsQuery = buildFtsQuery(q);
+    if (!ftsQuery) {
+      where.push('0 = 1');
+    } else {
+      from = 'FROM products p JOIN product_fts ON product_fts.rowid = p.id LEFT JOIN categories c ON c.id = p.category_id';
+      where.push('product_fts MATCH ?');
+      bindings.push(ftsQuery);
+    }
   }
 
   const sql = `SELECT p.id, p.slug, p.title, p.title_bn, p.price, p.compare_at_price,
@@ -193,8 +201,7 @@ adminProductRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
                       c.name AS category_name,
                       (SELECT i.r2_key FROM product_images i
                         WHERE i.product_id = p.id ORDER BY i.sort, i.id LIMIT 1) AS image_key
-                 FROM products p
-                 LEFT JOIN categories c ON c.id = p.category_id
+                 ${from}
                 ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
                 ORDER BY p.updated_at DESC, p.id DESC
                 LIMIT ? OFFSET ?`;
@@ -287,6 +294,8 @@ adminProductRoutes.post('/', zValidator('json', productInputSchema), async (c) =
       throw error;
     }
   }
+
+  await syncProductFts(c.env.DB, created.id);
 
   const product = await loadProduct(db, created.id);
   return c.json({ ok: true, data: product }, 201);
@@ -419,6 +428,7 @@ adminProductRoutes.patch(
     }
 
     await db.batch(statements as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]);
+    await syncProductFts(c.env.DB, id);
 
     const product = await loadProduct(db, id);
     return c.json({ ok: true, data: product });
@@ -452,6 +462,7 @@ adminProductRoutes.delete(
     ]);
     if (keys.length) await c.env.IMAGES.delete(keys);
 
+    await deleteProductFts(c.env.DB, id);
     await db.delete(products).where(eq(products.id, id));
 
     return c.json({ ok: true, data: null });
