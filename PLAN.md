@@ -14,6 +14,7 @@ Rules and constraints live in `AGENTS.md`. This file is the roadmap: build **one
 - Fast on cheap phones and slow mobile networks.
 - Comfortably handles 500–1,000 visitors a day (and 1,000 at once during a Facebook-ad or live-sale spike), and degrades gracefully instead of going down.
 - Customizable by a non-developer: setup wizard, admin settings, theme presets, business presets.
+- **One-click deployable:** a Deploy to Cloudflare button creates the D1 database and R2 bucket, asks for one secret, deploys, and lands the owner in a browser-based setup wizard. No terminal needed.
 
 **Non-goals (v1)**
 - Multi-tenant SaaS (one deploy per business instead).
@@ -35,7 +36,8 @@ Rules and constraints live in `AGENTS.md`. This file is the roadmap: build **one
 | Payments v1 | COD + manual bKash/Nagad (customer enters TrxID, admin verifies) | Zero fees, matches how most BD shops operate |
 | Payments later | Gateway adapter (SSLCommerz / aamarPay / bKash API) | Optional plugin |
 | Courier | Adapter interface; Steadfast first | Common among BD sellers |
-| Deployment | One fork + one Cloudflare account per business | Each shop gets its own free quota |
+| Deployment | One fork + one Cloudflare account per business, via the Deploy to Cloudflare button | Each shop gets its own free quota; no terminal needed |
+| Image serving | `R2_PUBLIC_URL` when set; Worker route `/img/*` with immutable caching as the zero-config default | Works out of the box after one click; owner can switch to direct R2 later |
 
 ---
 
@@ -87,6 +89,32 @@ When the shop outgrows free, the fix is one switch: Workers Paid (about $5/month
 
 ---
 
+## 3c. One-click Cloudflare deploy
+
+**Button:** `https://deploy.workers.cloudflare.com/?url=https://github.com/taxin-404/bdcommerce` (repo must stay public; Workers apps only, not Pages).
+
+**What the button does for us:** forks the repo into the owner's GitHub, auto-provisions the D1 database and R2 bucket from the
+Wrangler config, prompts for the secrets listed in `.dev.vars.example`, runs our `build` and `deploy` scripts (remote migrations, then `wrangler deploy`), and gives a `*.workers.dev` URL.
+
+**Owner flow (no terminal):**
+1. Click the button, sign in to Cloudflare and GitHub.
+2. Accept or rename the database and bucket names, enter `ADMIN_PASSPHRASE` (a long random passphrase).
+3. Wait for the build; open the URL.
+4. Go to `/admin`, log in, finish the **setup wizard** (name, logo, theme, contact, payment numbers, delivery fees), optionally apply a business preset to get demo data.
+
+**Design consequences:**
+- Only one required secret (`ADMIN_PASSPHRASE`); the session key is derived from it plus a per-install salt in `settings`.
+- Image uploads work immediately because images fall back to the Worker route `/img/*`. The admin banner explains how to enable R2 public access (or a custom domain) to remove image traffic from the Worker.
+- Presets and demo data are applied from the admin UI, not a CLI script.
+- Migrations run on every deploy, so updates apply automatically and must be safe and forward-only.
+- No real resource IDs are ever committed to the template repo.
+
+**Still manual (documented in the owner guide):** custom domain (needed for the Cache API), R2 public access, optional keys (Turnstile, courier, Conversions API), and adding a payment method if Cloudflare asks for one for R2.
+
+**Updates:** each deployed shop is an independent fork. `scripts/sync-upstream.sh` merges the template's `main` into the fork and keeps the fork's own resource IDs and config.
+
+---
+
 ## 4. Repo layout
 
 ```
@@ -96,10 +124,12 @@ When the shop outgrows free, the fix is one switch: Workers Paid (about $5/month
 ├─ README.md
 ├─ site.config.ts            # all business-specific values
 ├─ wrangler.jsonc
+├─ .dev.vars.example         # secrets with comments (ADMIN_PASSPHRASE required, the rest optional)
 ├─ astro.config.mjs
 ├─ migrations/               # SQL migrations (D1)
 ├─ scripts/
-│  ├─ setup.sh               # create D1 + R2, write IDs into wrangler.jsonc, run migrations
+│  ├─ setup.sh               # optional CLI path (uses Wrangler auto-provisioning; no IDs committed)
+│  ├─ sync-upstream.sh       # merge template updates into a deployed fork, keeping its resource IDs
 │  └─ seed.ts                # demo data for 3 business types
 ├─ src/
 │  ├─ db/                    # drizzle schema + query helpers (one file per table group)
@@ -307,7 +337,7 @@ Each phase: paste the prompt, review the diff, run the acceptance checks, commit
 ### Phase 0 — Scaffold and infrastructure
 
 **Prompt:**
-> Read AGENTS.md and PLAN.md. Do Phase 0 only. Scaffold an Astro SSR project with the Cloudflare adapter, Tailwind, Preact, TypeScript strict, Drizzle, Zod, Hono (+ `@hono/zod-validator`), Vitest, pnpm. Mount the Hono app at `src/pages/api/[...route].ts` with routes in `src/api/` and a `/api/health` route. Check current official docs for the adapter and wrangler config. Create `wrangler.jsonc` with D1 binding `DB`, R2 binding `IMAGES`, and static assets. Add the scripts listed in AGENTS.md. Create `.dev.vars.example`, `.gitignore`, a minimal README, and `scripts/setup.sh` that creates the D1 database and R2 bucket via wrangler and writes the IDs into the config. Home page can be a placeholder that reads one row from D1 to prove the binding works locally.
+> Read AGENTS.md and PLAN.md. Do Phase 0 only. Scaffold an Astro SSR project with the Cloudflare adapter, Tailwind, Preact, TypeScript strict, Drizzle, Zod, Hono (+ `@hono/zod-validator`), Vitest, pnpm. Mount the Hono app at `src/pages/api/[...route].ts` with routes in `src/api/` and a `/api/health` route. Check current official docs for the adapter and wrangler config. Create `wrangler.jsonc` with D1 binding `DB`, R2 binding `IMAGES`, and static assets. Add the scripts listed in AGENTS.md. Create `.dev.vars.example`, `.gitignore`, a minimal README, and an optional `scripts/setup.sh` for CLI users that relies on Wrangler's automatic provisioning (never commit real resource IDs). Home page can be a placeholder that reads one row from D1 to prove the binding works locally. One-click deploy requirements: declare D1 binding `DB` and R2 binding `IMAGES` in `wrangler.jsonc` without resource IDs so the Deploy to Cloudflare button can auto-provision them (check the current Wrangler and deploy-button docs); add `package.json` scripts `build` and `deploy` where `deploy` applies remote D1 migrations (`wrangler d1 migrations apply DB --remote`) and then runs `wrangler deploy`; make `.dev.vars.example` list every secret with a comment, with only `ADMIN_PASSPHRASE` required; and add this button to the README: `[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/taxin-404/bdcommerce)`.
 
 **Done when:** `pnpm dev` runs, the placeholder page reads from local D1, `pnpm typecheck && pnpm build` pass.
 
@@ -321,7 +351,7 @@ Each phase: paste the prompt, review the diff, run the acceptance checks, commit
 ### Phase 2 — Admin auth, categories, products, R2 uploads
 
 **Prompt:**
-> Do Phase 2. Admin login at `/admin/login` using the `ADMIN_PASSPHRASE` secret: constant-time compare, HMAC-signed httpOnly SameSite=Lax cookie (secret `SESSION_SECRET`), rate-limited failed attempts (use D1, not KV). Implement the session check as Hono middleware on `/api/admin/*`, reused by the admin pages. Build admin CRUD for categories and products (with variants and image management). Image upload: client-side compress to WebP (max 1600 px, quality ~0.8), POST to `/api/admin/upload`, Worker validates type/size and `put`s to R2 under `products/{productId}/{uuid}.webp`. Serve images via a configurable `R2_PUBLIC_URL`. Admin UI must be mobile-friendly and in Bangla/English.
+> Do Phase 2. Admin login at `/admin/login` using the `ADMIN_PASSPHRASE` secret: constant-time compare, HMAC-signed httpOnly SameSite=Lax cookie (key derived from `ADMIN_PASSPHRASE` via HKDF with a random per-install salt stored in `settings`, so there is no separate SESSION_SECRET), rate-limited failed attempts (use D1, not KV). Implement the session check as Hono middleware on `/api/admin/*`, reused by the admin pages. Build admin CRUD for categories and products (with variants and image management). Image upload: client-side compress to WebP (max 1600 px, quality ~0.8), POST to `/api/admin/upload`, Worker validates type/size and `put`s to R2 under `products/{productId}/{uuid}-{thumb|md|full}.webp` (three sizes: 400, 800, 1600 px). Serve images via `R2_PUBLIC_URL` when it is set; when it is unset, fall back to a Worker route `/img/*` that streams from R2 with `Cache-Control: public, max-age=31536000, immutable`, and show an admin banner explaining how to enable R2 public access. Admin UI must be mobile-friendly and in Bangla/English.
 
 **Done when:** I can log in, create a category and a product with two images and variants, and see the images load from R2 (local emulation is fine).
 
@@ -349,7 +379,7 @@ Each phase: paste the prompt, review the diff, run the acceptance checks, commit
 ### Phase 6 — bKash/Nagad manual payments, coupons, delivery settings
 
 **Prompt:**
-> Do Phase 6. Add manual bKash and Nagad payment options driven by config (number, personal/merchant). Checkout collects sender number + TrxID, order becomes `pending_verification`, admin can verify or reject. Add coupons (percent/fixed, min subtotal, usage limit, date range) with server-side validation and atomic usage counting. Admin settings page to edit shipping zones/fees, free-shipping threshold, payment toggles, contact and social links, homepage section order, and theme preset (stored in `settings`). Add the first-run setup wizard (business name, logo upload to R2, theme, contact, payment numbers, delivery fees, first category) and the business presets in `src/presets/` (clothing, food, electronics, baby-gifts) that seed categories, attribute fields, and demo products.
+> Do Phase 6. Add manual bKash and Nagad payment options driven by config (number, personal/merchant). Checkout collects sender number + TrxID, order becomes `pending_verification`, admin can verify or reject. Add coupons (percent/fixed, min subtotal, usage limit, date range) with server-side validation and atomic usage counting. Admin settings page to edit shipping zones/fees, free-shipping threshold, payment toggles, contact and social links, homepage section order, and theme preset (stored in `settings`). Add the first-run setup wizard (business name, logo upload to R2, theme, contact, payment numbers, delivery fees, first category) and the business presets in `src/presets/` (clothing, food, electronics, baby-gifts) that seed categories, attribute fields, and demo products. The wizard and presets must work entirely in the browser: applying a preset is an admin action (`POST /api/admin/presets/apply`), not a CLI script, because one-click deployers have no terminal.
 
 **Done when:** each payment method works end to end, an invalid or exhausted coupon is rejected, settings edits take effect without redeploy.
 
@@ -377,9 +407,9 @@ Each phase: paste the prompt, review the diff, run the acceptance checks, commit
 ### Phase 10 — Load test, packaging, docs
 
 **Prompt:**
-> Do Phase 10. Add k6 scripts in `/loadtest`: (a) browse flow (home → shop → product), (b) spike of 1,000 virtual users over 60 seconds, (c) 50 concurrent checkouts against products with limited stock (verify no overselling and no duplicate orders). Run them against a separate staging deployment only, never the live shop, and report p95 latency, error rate, and the extrapolated daily D1 rows read/written and Worker requests. Then write a complete README: what it is, free-tier limits (including that R2 may need a payment method on file) and what to do if the daily quota is hit or the shop outgrows free (Workers Paid), one-command setup via `scripts/setup.sh`, a "Deploy to Cloudflare" button, custom domain setup (needed for the Cache API), backups (D1 export, Time Travel, rclone for R2), and a smoke-test checklist. Write `docs/CUSTOMIZE.md` and an owner's guide in Bangla and English covering the setup wizard, settings, themes, presets, adding products, and handling orders.
+> Do Phase 10. Add k6 scripts in `/loadtest`: (a) browse flow (home → shop → product), (b) spike of 1,000 virtual users over 60 seconds, (c) 50 concurrent checkouts against products with limited stock (verify no overselling and no duplicate orders). Run them against a separate staging deployment only, never the live shop, and report p95 latency, error rate, and the extrapolated daily D1 rows read/written and Worker requests. Then write a complete README: what it is, free-tier limits (including that R2 may need a payment method on file) and what to do if the daily quota is hit or the shop outgrows free (Workers Paid), the "Deploy to Cloudflare" button as the primary install path (with a step-by-step for non-developers in Bangla and English), `scripts/setup.sh` as an optional CLI path, `scripts/sync-upstream.sh` for merging template updates into a deployed fork without losing its resource IDs, custom domain setup (needed for the Cache API), backups (D1 export, Time Travel, rclone for R2), and a smoke-test checklist. Write `docs/CUSTOMIZE.md` and an owner's guide in Bangla and English covering the setup wizard, settings, themes, presets, adding products, and handling orders.
 
-**Done when:** targets are met (p95 under ~800 ms, error rate under 1%, projected daily usage under about 50% of free limits at 1,000 sessions/day), and a fresh fork can be deployed and customized by following the docs only.
+**Done when:** targets are met (p95 under ~800 ms, error rate under 1%, projected daily usage under about 50% of free limits at 1,000 sessions/day), and a brand-new Cloudflare account can deploy through the button, log in, and finish the setup wizard with no terminal, following the docs only. Test the button flow on a fresh account (the repo must be public).
 
 ---
 
