@@ -21,6 +21,10 @@ const readOnlyFiles = [
   'src/pages/admin/products/index.astro',
   'src/pages/admin/products/new.astro',
   'src/pages/admin/products/[id].astro',
+  'src/pages/admin/orders/index.astro',
+  'src/pages/admin/orders/[id].astro',
+  'src/pages/admin/orders/[id]/invoice.astro',
+  'src/pages/admin/orders/[id]/packing-slip.astro',
   'src/pages/img/[...key].ts',
   'src/pages/api/[...route].ts',
   'src/components/AdminProductForm.astro',
@@ -28,6 +32,7 @@ const readOnlyFiles = [
   'src/components/home/HomeSections.astro',
   'src/layouts/StorefrontLayout.astro',
   'src/layouts/AdminLayout.astro',
+  'src/layouts/PrintLayout.astro',
   'src/api/routes/health.ts',
   'src/api/routes/images.ts',
 ];

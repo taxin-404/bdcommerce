@@ -4,6 +4,7 @@ import { requireAdmin } from '../middleware/admin';
 import { adminAuthRoutes } from './admin-auth';
 import { adminCategoryRoutes } from './admin-categories';
 import { adminImageRoutes } from './admin-images';
+import { adminBlocklistRoutes, adminOrderRoutes } from './admin-orders';
 import { adminProductRoutes } from './admin-products';
 import { reindexProductFts } from '../../lib/search';
 
@@ -28,4 +29,6 @@ adminRoutes.post('/search/reindex', async (c) => {
 
 adminRoutes.route('/categories', adminCategoryRoutes);
 adminRoutes.route('/products', adminProductRoutes);
+adminRoutes.route('/orders', adminOrderRoutes);
+adminRoutes.route('/blocklist', adminBlocklistRoutes);
 adminRoutes.route('/', adminImageRoutes);

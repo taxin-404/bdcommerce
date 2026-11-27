@@ -37,6 +37,25 @@ At the end of every phase, the agent appends its rulings here under a new headin
 - The client stores one idempotency key per cart signature. Retrying an unchanged cart reuses the key; changing the cart rotates it, so a lost response cannot make the client clear a new cart while returning an old order.
 - Physical browser pass at 390 px: the header search moves to a full-width second row, and the confirmation page deduplicates locality names already present in the street address (for example "House 12, Road 5, Savar" + upazila Savar).
 
+## Phase 5 — admin orders and dashboard
+- Asia/Dhaka is treated as a fixed UTC+6 offset (no DST). Date filters are half-open UTC ranges for one Dhaka calendar day; the dashboard uses the Dhaka day containing “now”.
+- The dashboard week starts Saturday 00:00 Asia/Dhaka. “This week’s revenue” is the sum of order totals placed in that window, excluding `cancelled`, `returned`, and `payment_status = 'refunded'`. It is a placed-order figure, not cash collected.
+- The orders list filters by exact normalized phone, status, and Dhaka date range. A partial phone or invalid date/range shows a clear filter error; it is not silently ignored.
+- Keyset pagination is `(created_at, id) < (?, ?)` ordered by `created_at DESC, id DESC`. The first page uses a far-future cursor so `EXPLAIN QUERY PLAN` reports an index `SEARCH`, not a whole-index `SCAN`. Cursors are base64url JSON `{t,i}` and invalid/tampered cursors restart at the newest page.
+- The list pins the matching composite index with `INDEXED BY`: `(created_at,id)`, `(status,created_at,id)`, `(phone,created_at,id)`, or `(phone,status,created_at,id)`. All filter/cursor combinations in the tests show `SEARCH ... USING INDEX` with no `SCAN` and no temp B-tree.
+- The older `idx_orders_status` / `idx_orders_phone` indexes are retained to avoid a destructive migration. The keyset indexes add per-order index writes; removing the old pair is a later optimisation.
+- Allowed transitions are exactly `pending→confirmed→shipped→delivered`, cancel from `pending`/`confirmed`, and return from `shipped`/`delivered`. Everything else returns 409 with the current status.
+- A status change is one batch: optimistic `UPDATE ... WHERE id = ? AND status = ?`, a one-row `order_transition_guard` CHECK on `changes() = 1`, the optional stock restore, and the `order_events` row. A lost race aborts and rolls back the whole batch, returning `status_conflict`; it cannot apply the transition or restore stock twice.
+- Event `type` is the target status (`confirmed`, `shipped`, …); the optional admin note is the event message. The timeline reads `order_events` and stored order/item snapshots.
+- `order_items.stock_tracked` records what checkout actually decremented (`line.track_stock && variant_id != null`). Cancel/return restores `SUM(qty)` once per variant only for `stock_tracked = 1` lines, independent of later product/config changes. Existing rows are backfilled best-effort from current `products.track_stock`; deleted products/variants cannot be restored.
+- COD orders become `payment_status = 'paid'` when delivered. Cancelling or returning a paid order moves it to `refunded`; unpaid or pending-verification orders keep their payment status. Phase 6 owns payment verification/refund tooling.
+- Invoices and packing slips are read-only and built only from `orders` and `order_items` snapshots. They never join current products/variants; `site.config.ts`/settings supply only shop identity, contact, and currency. Both pages accept `?lang=bn|en`.
+- “Block this phone” writes `blocklist` with an upsert and shows the blocked state on the order. Checkout enforcement remains Phase 7.
+- Page-body D1 round trips: dashboard 2 (one 5-statement KPI batch + config), orders list 2 (list + config), order detail 2 (one 4-statement detail batch + config), invoice/packing slip 2 (one print batch + config). The admin auth middleware adds one settings read, for 3 total.
+- The dashboard shows all matching low-stock tracked variants (`track_stock = 1`, active product/variant, stock ≤ 5) as a count, with at most 10 rows listed. The count query is indexed.
+- `admin.dashboard` stays a translated string for the nav/title; dashboard card keys live under `admin.dashboardCards.*`.
+- No new dependencies. Admin pages and APIs remain behind the existing auth middleware, and no GET path writes D1.
+
 ## Phase 1–2
 
 ### Phase 1 — schema, config, seed

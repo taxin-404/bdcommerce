@@ -7,7 +7,7 @@ import type { AdminLocale } from '../lib/admin-locale';
 interface Props {
   title: string;
   locale: AdminLocale;
-  current?: 'dashboard' | 'categories' | 'products' | 'product';
+  current?: 'dashboard' | 'categories' | 'products' | 'product' | 'orders' | 'order';
 }
 
 const { title, locale, current } = Astro.props;
@@ -32,6 +32,11 @@ const errorCodes = [
   'badOrigin',
   'rateLimited',
   'adminNotConfigured',
+  'order_not_found',
+  'invalid_transition',
+  'status_conflict',
+  'invalid_phone',
+  'db_unavailable',
 ] as const;
 const adminErrors = Object.fromEntries(
   errorCodes.map((code) => [code, t(locale, `admin.errors.${code}`)]),
@@ -40,6 +45,7 @@ const adminErrorsJson = JSON.stringify(adminErrors).replace(/</g, '\\u003c');
 
 const navItems = [
   { key: 'dashboard', href: '/admin', label: t(locale, 'admin.dashboard') },
+  { key: 'orders', href: '/admin/orders', label: t(locale, 'admin.orders') },
   { key: 'products', href: '/admin/products', label: t(locale, 'admin.products') },
   { key: 'categories', href: '/admin/categories', label: t(locale, 'admin.categories') },
 ] as const;
@@ -65,7 +71,8 @@ const navItems = [
                 class:list={[
                   'rounded px-3 py-1.5 transition',
                   current === item.key ||
-                  (item.key === 'products' && current === 'product')
+                  (item.key === 'products' && current === 'product') ||
+                  (item.key === 'orders' && current === 'order')
                     ? 'bg-teal-700 font-medium'
                     : 'hover:bg-teal-700/60',
                 ]}

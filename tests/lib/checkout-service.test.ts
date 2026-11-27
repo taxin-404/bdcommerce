@@ -152,6 +152,61 @@ describe('createCheckoutOrder transaction', () => {
     ).toBe(4);
   });
 
+  it('records which lines checkout actually tracked', async () => {
+    environment = createTestDb();
+    const { sqlite, db } = environment;
+    insertProduct(sqlite, {
+      id: 1,
+      title: 'Tracked',
+      price: 100,
+      variants: [{ id: 11, title: 'M', stock: 5 }],
+    });
+    insertProduct(sqlite, {
+      id: 2,
+      title: 'Untracked',
+      price: 50,
+      trackStock: false,
+      variants: [{ id: 22, title: 'One size', stock: 0 }],
+    });
+
+    const result = await createCheckoutOrder({
+      db,
+      idempotencyKey: 'tracked-snapshot-key',
+      customer,
+      lines: [
+        line(),
+        line({
+          product_id: 2,
+          variant_id: 22,
+          title: 'Untracked',
+          variant_title: 'One size',
+          unit_price: 50,
+          line_total: 50,
+          track_stock: false,
+        }),
+      ],
+      subtotal: 150,
+      shippingFee: 60,
+      total: 210,
+      number: generateOrderNumber(),
+      requestHash: 'hash-a',
+    });
+
+    expect(result.ok).toBe(true);
+    const items = sqlite
+      .prepare(
+        `SELECT oi.variant_id, oi.stock_tracked
+           FROM order_items oi
+           JOIN orders o ON o.id = oi.order_id
+          ORDER BY oi.id`,
+      )
+      .all() as unknown as Array<{ variant_id: number; stock_tracked: number }>;
+    expect(items).toEqual([
+      { variant_id: 11, stock_tracked: 1 },
+      { variant_id: 22, stock_tracked: 0 },
+    ]);
+  });
+
   it('treats a missing guard table as a database outage, not out-of-stock', async () => {
     environment = createTestDb();
     const { sqlite, db, adapter } = environment;

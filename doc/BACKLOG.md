@@ -3,21 +3,22 @@
 Items deferred from earlier phases. Each one is tagged with the phase that should handle it.
 At the end of every phase, the agent appends its deferred items here. When an item is done, delete it.
 
-## Phase 5 (admin order management)
-- The localized `title_snapshot` is what the customer saw; admin order views should link back to `product_id` when the product still exists.
-
 ## Phase 6 (settings and admin)
 - Section config: some fields (image, icon, trust title) are accepted but unused; one invalid section currently resets the whole home layout. Validate per section and keep the valid ones.
 - Coupons are not implemented yet: checkout always stores `discount = 0` and `coupon_code = NULL`. Add coupon validation and atomic usage counting.
 - bKash/Nagad manual payment is deferred; only COD is accepted.
 - Delivery-zone mapping is hardcoded to the `dhaka`/`outside` zone ids and Dhaka district. Make the district-to-zone mapping editable in admin settings.
 - The cart does not show free-shipping progress; add a hint when `freeShippingOver` is configured.
+- Inventory: stock restores skip lines whose product or variant was deleted after the order. Decide whether to keep a full variant/product snapshot or accept the loss.
+- Dashboard revenue is placed-order gross value. Add a separate cash-collected/paid-only metric and make the low-stock threshold configurable (currently fixed at 5).
+- The order status API accepts a note, but the admin UI does not collect one. Add an optional note field with the transition buttons.
 
 ## Phase 7 (courier and fraud controls)
 - No per-phone or per-IP order limits and Turnstile is off by default, so fake COD orders can drain tracked stock. Do not launch a real shop before this is done.
 - Order rate limits per phone/IP and blocklist enforcement are not wired into checkout yet (`ip_hash` stays NULL).
 - `/track` has no rate limit. Add one so order-number guesses are throttled.
 - Turnstile verification currently trusts `cf-connecting-ip` when present; review the proxy/IP handling during the fraud-control pass.
+- Add a blocklist review/unblock screen; Phase 5 only records blocks, and enforcement is still pending.
 
 ## Phase 8 (i18n, SEO, accessibility)
 - Some ARIA labels are English-only. The shop search input has no label of its own. The "↳" character is read aloud by screen readers. Category chips lack `aria-current`.
@@ -42,6 +43,9 @@ At the end of every phase, the agent appends its deferred items here. When an it
 - Consolidate the settings read with the cart/checkout first query; both pages currently make one settings round trip before the client re-prices.
 - The no-GET-writes test is file-level. Add a handler-level check so a future GET route cannot hide a write behind a shared helper.
 - When D1 fails before pricing, the fallback message lists only "the items in my cart" without names/prices. Show a cached/last-known summary if one is available.
+- The admin order list puts the phone filter in the GET URL (browser history, Referer, edge logs). Move filter state to POST/session or an opaque token if edge logs must be PII-free.
+- The legacy `idx_orders_status` / `idx_orders_phone` indexes are redundant after the Phase 5 composite keyset indexes. Remove them after confirming production plans.
+- The low-stock count reads every tracked variant at or below 5 before filtering the product state. Re-measure on a large catalog or maintain a counter.
 
 ## Phase 10 (packaging)
 - The seed has no demo images. Add demo images or document the admin upload step in the owner guide.

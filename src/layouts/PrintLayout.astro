@@ -1,0 +1,76 @@
+---
+import '../styles/global.css';
+import { t } from '../lib/i18n';
+import type { AdminLocale } from '../lib/admin-locale';
+
+interface Props {
+  title: string;
+  locale: AdminLocale;
+  orderId?: number;
+}
+
+const { title, locale, orderId } = Astro.props;
+const otherLocale: AdminLocale = locale === 'bn' ? 'en' : 'bn';
+const langHref = `${Astro.url.pathname}?lang=${otherLocale}`;
+const backHref = orderId ? `/admin/orders/${orderId}` : '/admin/orders';
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{title}</title>
+    <style>
+      @media print {
+        @page {
+          size: A4;
+          margin: 12mm;
+        }
+
+        .no-print {
+          display: none !important;
+        }
+
+        body {
+          background: #fff !important;
+          color: #111 !important;
+          font-size: 12pt;
+        }
+
+        a {
+          color: inherit !important;
+          text-decoration: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body class="min-h-screen bg-slate-100 text-slate-900 antialiased">
+    <div class="no-print mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3">
+      <a href={backHref} class="text-sm text-teal-700 hover:underline">
+        ← {t(locale, 'admin.order.backToOrder')}
+      </a>
+      <div class="flex gap-2">
+        <a href={langHref} class="rounded border border-slate-300 bg-white px-2 py-1 text-xs uppercase">
+          {otherLocale}
+        </a>
+        <button
+          type="button"
+          id="print-page"
+          class="rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+        >
+          {t(locale, 'admin.print.action')}
+        </button>
+      </div>
+    </div>
+
+    <main class="mx-auto max-w-3xl bg-white px-6 py-6 shadow-sm print:max-w-none print:p-0 print:shadow-none">
+      <slot />
+    </main>
+
+    <script>
+      document.getElementById('print-page')?.addEventListener('click', () => window.print());
+    </script>
+  </body>
+</html>

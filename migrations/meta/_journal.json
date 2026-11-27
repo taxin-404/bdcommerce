@@ -57,6 +57,20 @@
       "when": 1795785256317,
       "tag": "0007_order_request_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795793474381,
+      "tag": "0008_admin_orders",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795795431020,
+      "tag": "0009_order_item_stock_tracked",
+      "breakpoints": true
     }
   ]
 }

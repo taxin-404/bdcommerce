@@ -29,6 +29,11 @@ describe('t', () => {
   it('returns the key when a translation is missing', () => {
     expect(t('en', 'missing.key')).toBe('missing.key');
   });
+
+  it('keeps the dashboard nav label a string, not a key prefix', () => {
+    expect(t('en', 'admin.dashboard')).toBe('Dashboard');
+    expect(t('bn', 'admin.dashboard')).toBe('ড্যাশবোর্ড');
+  });
 });
 
 describe('translations', () => {

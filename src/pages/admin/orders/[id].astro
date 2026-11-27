@@ -1,0 +1,339 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { resolveAdminLocale } from '../../../lib/admin-locale';
+import { loadAdminOrderDetail } from '../../../lib/admin-order-detail';
+import { loadConfig } from '../../../lib/config';
+import { formatDhakaDateTime } from '../../../lib/datetime';
+import { formatBdt } from '../../../lib/money';
+import { nextStatuses, ORDER_STATUSES, type OrderStatus } from '../../../lib/order-status';
+import { t } from '../../../lib/i18n';
+import { countRoundTrips, logQueryCount } from '../../../lib/query-log';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('admin_locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+
+const id = Number(Astro.params.id);
+const validId = Number.isSafeInteger(id) && id > 0;
+const { value: db, count } = countRoundTrips(env.DB);
+const [detail, config] = await Promise.all([
+  validId ? loadAdminOrderDetail(db, id) : Promise.resolve(null),
+  loadConfig(db),
+]);
+logQueryCount('admin/orders/[id]', count());
+
+if (!detail) Astro.response.status = 404;
+const order = detail?.order ?? null;
+const items = detail?.items ?? [];
+const events = detail?.events ?? [];
+const blocked = detail?.blocked ?? false;
+const transitions = order ? nextStatuses(order.status) : [];
+
+const money = (amount: number) =>
+  formatBdt(amount, {
+    locale,
+    symbol: config.currency.symbol,
+    bnDigits: config.currency.bnDigits,
+  });
+
+const eventTypes = new Set<string>(['created', ...ORDER_STATUSES]);
+
+const statusClass: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-900',
+  confirmed: 'bg-sky-100 text-sky-900',
+  shipped: 'bg-indigo-100 text-indigo-900',
+  delivered: 'bg-emerald-100 text-emerald-900',
+  cancelled: 'bg-slate-200 text-slate-700',
+  returned: 'bg-rose-100 text-rose-900',
+};
+
+const localeQuery = `?lang=${locale}`;
+---
+
+<AdminLayout
+  title={order ? `${t(locale, 'admin.order.detail')} ${order.number}` : t(locale, 'admin.order.notFoundTitle')}
+  locale={locale}
+  current="order"
+>
+  {
+    !order ? (
+      <div class="rounded-xl bg-white p-6 text-center shadow-sm">
+        <p class="text-slate-600">{t(locale, 'admin.order.notFound')}</p>
+        <a href="/admin/orders" class="mt-4 inline-block text-sm text-teal-700 hover:underline">
+          {t(locale, 'admin.order.backToList')}
+        </a>
+      </div>
+    ) : (
+      <>
+        <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <a href="/admin/orders" class="text-sm text-teal-700 hover:underline">
+              ← {t(locale, 'admin.order.backToList')}
+            </a>
+            <h1 class="mt-1 font-mono text-2xl font-semibold">{order.number}</h1>
+            <p class="text-sm text-slate-500">
+              {formatDhakaDateTime(order.created_at, locale)}
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <a
+              href={`/admin/orders/${order.id}/invoice${localeQuery}`}
+              target="_blank"
+              rel="noopener"
+              class="rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800"
+            >
+              {t(locale, 'admin.order.invoice')}
+            </a>
+            <a
+              href={`/admin/orders/${order.id}/packing-slip${localeQuery}`}
+              target="_blank"
+              rel="noopener"
+              class="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+            >
+              {t(locale, 'admin.order.packingSlip')}
+            </a>
+          </div>
+        </div>
+
+        <div class="grid gap-4 lg:grid-cols-3">
+          <section class="rounded-xl bg-white p-4 shadow-sm lg:col-span-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <span
+                class:list={[
+                  'rounded-full px-2 py-0.5 text-xs font-medium',
+                  statusClass[order.status] ?? 'bg-slate-100 text-slate-700',
+                ]}
+              >
+                {t(locale, `admin.order.statusLabel.${order.status}`)}
+              </span>
+              <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                {t(locale, `admin.order.payment.${order.payment_method}`)}
+              </span>
+              <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                {t(locale, `admin.order.paymentStatus.${order.payment_status}`)}
+              </span>
+              {blocked && (
+                <span class="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-900">
+                  {t(locale, 'admin.order.blocked')}
+                </span>
+              )}
+            </div>
+
+            <h2 class="mt-4 text-sm font-semibold text-slate-600">
+              {t(locale, 'admin.order.items')}
+            </h2>
+            <ul class="mt-2 divide-y divide-slate-100">
+              {items.map((item) => (
+                <li class="flex flex-wrap items-start justify-between gap-3 py-3">
+                  <div class="min-w-0">
+                    {item.product_exists && item.product_id ? (
+                      <a
+                        href={`/admin/products/${item.product_id}`}
+                        class="font-medium text-teal-700 hover:underline"
+                      >
+                        {item.title_snapshot}
+                      </a>
+                    ) : (
+                      <span class="font-medium">{item.title_snapshot}</span>
+                    )}
+                    {item.variant_snapshot && (
+                      <span class="block text-xs text-slate-500">{item.variant_snapshot}</span>
+                    )}
+                    <span class="block text-xs text-slate-500">
+                      {t(locale, 'admin.order.qty')}: {item.qty}
+                    </span>
+                  </div>
+                  <div class="text-right text-sm">
+                    <span class="block">{money(item.line_total)}</span>
+                    <span class="block text-xs text-slate-500">
+                      {money(item.unit_price)} × {item.qty}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <dl class="mt-4 space-y-1 border-t border-slate-100 pt-3 text-sm">
+              <div class="flex justify-between">
+                <dt class="text-slate-500">{t(locale, 'admin.order.subtotal')}</dt>
+                <dd>{money(order.subtotal)}</dd>
+              </div>
+              {order.discount > 0 && (
+                <div class="flex justify-between">
+                  <dt class="text-slate-500">{t(locale, 'admin.order.discount')}</dt>
+                  <dd>−{money(order.discount)}</dd>
+                </div>
+              )}
+              <div class="flex justify-between">
+                <dt class="text-slate-500">{t(locale, 'admin.order.shipping')}</dt>
+                <dd>{money(order.shipping_fee)}</dd>
+              </div>
+              <div class="flex justify-between text-base font-semibold">
+                <dt>{t(locale, 'admin.order.total')}</dt>
+                <dd>{money(order.total)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="space-y-4">
+            <div class="rounded-xl bg-white p-4 shadow-sm">
+              <h2 class="text-sm font-semibold text-slate-600">
+                {t(locale, 'admin.order.customer')}
+              </h2>
+              <p class="mt-2 font-medium">{order.customer_name}</p>
+              <p class="text-sm">{order.phone}</p>
+              {order.email && <p class="break-all text-sm">{order.email}</p>}
+              <p class="mt-2 text-sm text-slate-600">
+                {[order.address, order.upazila, order.district, order.division]
+                  .filter(Boolean)
+                  .join(', ')}
+              </p>
+              {order.note && (
+                <p class="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-900">{order.note}</p>
+              )}
+              {!blocked ? (
+                <button
+                  type="button"
+                  id="block-phone"
+                  class="mt-3 w-full rounded border border-rose-300 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
+                  data-phone={order.phone}
+                  data-confirm={t(locale, 'admin.order.blockConfirm')}
+                  data-reason={t(locale, 'admin.order.blockReason')}
+                  data-failed={t(locale, 'admin.order.blockFailed')}
+                >
+                  {t(locale, 'admin.order.blockAction')}
+                </button>
+              ) : (
+                <p class="mt-3 text-xs text-rose-700">{t(locale, 'admin.order.blockedHint')}</p>
+              )}
+            </div>
+
+            <div class="rounded-xl bg-white p-4 shadow-sm">
+              <h2 class="text-sm font-semibold text-slate-600">
+                {t(locale, 'admin.order.actions')}
+              </h2>
+              {transitions.length === 0 ? (
+                <p class="mt-2 text-sm text-slate-500">{t(locale, 'admin.order.noActions')}</p>
+              ) : (
+                <div class="mt-2 space-y-2">
+                  {transitions.map((status: OrderStatus) => (
+                    <button
+                      type="button"
+                      class:list={[
+                        'js-status w-full rounded px-3 py-2 text-sm font-medium',
+                        status === 'cancelled' || status === 'returned'
+                          ? 'border border-rose-300 bg-white text-rose-700 hover:bg-rose-50'
+                          : 'bg-teal-700 text-white hover:bg-teal-800',
+                      ]}
+                      data-status={status}
+                      data-order-id={order.id}
+                      data-confirm={t(locale, 'admin.order.statusConfirm', {
+                        status: t(locale, `admin.order.statusLabel.${status}`),
+                      })}
+                      data-failed={t(locale, 'admin.order.statusFailed')}
+                    >
+                      {t(locale, `admin.order.transition.${status}`)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <section class="mt-4 rounded-xl bg-white p-4 shadow-sm">
+          <h2 class="text-sm font-semibold text-slate-600">{t(locale, 'admin.order.timeline')}</h2>
+          <ol class="mt-3 space-y-3">
+            {events.map((event) => (
+              <li class="border-l-2 border-teal-200 pl-3">
+                <p class="text-sm font-medium">
+                  {eventTypes.has(event.type)
+                    ? t(locale, `admin.order.event.${event.type}`)
+                    : event.type}
+                </p>
+                <p class="text-xs text-slate-500">
+                  {formatDhakaDateTime(event.created_at, locale)}
+                </p>
+                {event.message && <p class="mt-1 text-sm text-slate-600">{event.message}</p>}
+              </li>
+            ))}
+          </ol>
+        </section>
+      </>
+    )
+  }
+</AdminLayout>
+
+<script>
+  import { adminErrorMessage } from '../../../scripts/admin-errors';
+
+  document.querySelectorAll<HTMLButtonElement>('.js-status').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!window.confirm(button.dataset.confirm ?? '')) return;
+      button.disabled = true;
+
+      try {
+        const response = await fetch(`/api/admin/orders/${button.dataset.orderId}/status`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ status: button.dataset.status }),
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: { code?: string };
+        } | null;
+
+        if (!response.ok || !payload?.ok) {
+          window.alert(adminErrorMessage(payload?.error?.code, button.dataset.failed ?? ''));
+          button.disabled = false;
+          return;
+        }
+
+        window.location.reload();
+      } catch {
+        window.alert(button.dataset.failed ?? '');
+        button.disabled = false;
+      }
+    });
+  });
+
+  const blockButton = document.getElementById('block-phone') as HTMLButtonElement | null;
+  blockButton?.addEventListener('click', async () => {
+    if (!window.confirm(blockButton.dataset.confirm ?? '')) return;
+    const reason = window.prompt(blockButton.dataset.reason ?? '');
+    if (reason === null) return;
+    blockButton.disabled = true;
+
+    try {
+      const response = await fetch('/api/admin/blocklist', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ phone: blockButton.dataset.phone ?? '', reason }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: { code?: string };
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        window.alert(adminErrorMessage(payload?.error?.code, blockButton.dataset.failed ?? ''));
+        blockButton.disabled = false;
+        return;
+      }
+
+      window.location.reload();
+    } catch {
+      window.alert(blockButton.dataset.failed ?? '');
+      blockButton.disabled = false;
+    }
+  });
+</script>

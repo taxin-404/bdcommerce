@@ -2,5 +2,6 @@
 export * from './schema/auth';
 export * from './schema/catalog';
 export * from './schema/checkout';
+export * from './schema/order-transition';
 export * from './schema/orders';
 export * from './schema/settings';

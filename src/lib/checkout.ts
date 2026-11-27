@@ -148,9 +148,9 @@ export async function createCheckoutOrder(input: {
           .prepare(
             `INSERT INTO order_items (
                order_id, product_id, variant_id, title_snapshot, variant_snapshot,
-               unit_price, qty, line_total
+               unit_price, qty, line_total, stock_tracked
              )
-             SELECT o.id, ?, ?, ?, ?, ?, ?, ?
+             SELECT o.id, ?, ?, ?, ?, ?, ?, ?, ?
                FROM orders o
               WHERE o.number = ?`,
           )
@@ -162,6 +162,7 @@ export async function createCheckoutOrder(input: {
             line.unit_price,
             line.qty,
             line.line_total,
+            line.track_stock && line.variant_id !== null ? 1 : 0,
             orderNumber,
           ),
       );
