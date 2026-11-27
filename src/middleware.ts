@@ -1,5 +1,6 @@
 import { defineMiddleware } from 'astro:middleware';
 import { env } from 'cloudflare:workers';
+import { validateAdminPassphrase } from './lib/admin-passphrase';
 import { ADMIN_COOKIE_NAME, verifySessionCookie } from './lib/auth';
 
 function harden(response: Response): Response {
@@ -20,10 +21,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return harden(await next());
   }
 
+  const configured = validateAdminPassphrase(env.ADMIN_PASSPHRASE);
+  if (!configured.ok) {
+    return harden(context.redirect('/admin/login'));
+  }
+
   const cookie = context.cookies.get(ADMIN_COOKIE_NAME)?.value;
-  const passphrase = env.ADMIN_PASSPHRASE;
-  const session =
-    passphrase && cookie ? await verifySessionCookie(cookie, env.DB, passphrase) : null;
+  const session = cookie
+    ? await verifySessionCookie(cookie, env.DB, configured.passphrase)
+    : null;
 
   if (!session) {
     const target = encodeURIComponent(pathname + search);
