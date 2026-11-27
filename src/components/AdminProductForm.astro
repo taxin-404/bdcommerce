@@ -1,0 +1,682 @@
+---
+import { env } from 'cloudflare:workers';
+import type { AdminLocale } from '../lib/admin-locale';
+import { loadConfig } from '../lib/config';
+import { t } from '../lib/i18n';
+import { imageUrl } from '../lib/image';
+
+interface VariantData {
+  id: number;
+  sku: string | null;
+  title: string;
+  options: Record<string, string>;
+  price: number | null;
+  stock: number;
+  active: boolean;
+}
+
+interface ImageData {
+  id: number;
+  r2_key: string;
+  alt: string | null;
+  sort: number;
+}
+
+interface ProductData {
+  id: number;
+  slug: string;
+  title: string;
+  title_bn: string | null;
+  description: string | null;
+  description_bn: string | null;
+  category_id: number | null;
+  price: number;
+  compare_at_price: number | null;
+  status: 'draft' | 'active' | 'archived';
+  track_stock: boolean;
+  attributes: Record<string, unknown>;
+  featured: boolean;
+  variants: VariantData[];
+  images: ImageData[];
+}
+
+interface Props {
+  locale: AdminLocale;
+  product: ProductData | null;
+  categories: Array<{ id: number; name: string }>;
+}
+
+const { locale, product, categories } = Astro.props;
+const publicUrl = env.R2_PUBLIC_URL ?? '';
+const config = await loadConfig(env.DB);
+const currencySymbol = config.currency.symbol;
+
+function optionsToText(options: Record<string, string>): string {
+  return Object.entries(options)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(', ');
+}
+
+function attributesToText(attributes: Record<string, unknown>): string {
+  return Object.entries(attributes)
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join('\n');
+}
+---
+
+<form
+  id="product-form"
+  class="space-y-6"
+  data-product-id={product?.id ?? ''}
+  data-saved={t(locale, 'admin.product.saved')}
+  data-save-failed={t(locale, 'admin.product.saveFailed')}
+  data-upload-failed={t(locale, 'admin.product.uploadFailed')}
+  data-uploading={t(locale, 'admin.product.uploading')}
+  data-delete-failed={t(locale, 'admin.product.deleteFailed')}
+  data-delete-confirm={t(locale, 'admin.product.deleteConfirm')}
+  data-delete-image-confirm={t(locale, 'admin.product.deleteImage')}
+>
+  <section class="rounded-xl bg-white p-5 shadow-sm">
+    <h2 class="mb-4 text-lg font-medium">
+      {product ? t(locale, 'admin.product.edit') : t(locale, 'admin.product.new')}
+    </h2>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.product.title')}</span>
+        <input
+          name="title"
+          required
+          maxlength="200"
+          value={product?.title ?? ''}
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        />
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.product.titleBn')}</span>
+        <input
+          name="title_bn"
+          maxlength="200"
+          value={product?.title_bn ?? ''}
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        />
+      </label>
+
+      <label class="block text-sm sm:col-span-2">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.product.slug')}</span>
+        <input
+          name="slug"
+          maxlength="100"
+          value={product?.slug ?? ''}
+          class="w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+        />
+        <span class="mt-1 block text-xs text-slate-500">{t(locale, 'admin.product.slugHint')}</span>
+      </label>
+
+      <label class="block text-sm sm:col-span-2">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.product.description')}</span>
+        <textarea
+          name="description"
+          rows="3"
+          maxlength="5000"
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        >{product?.description ?? ''}</textarea>
+      </label>
+
+      <label class="block text-sm sm:col-span-2">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.product.descriptionBn')}</span>
+        <textarea
+          name="description_bn"
+          rows="3"
+          maxlength="5000"
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        >{product?.description_bn ?? ''}</textarea>
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.product.category')}</span>
+        <select
+          name="category_id"
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        >
+          <option value="">{t(locale, 'admin.product.noCategory')}</option>
+          {
+            categories.map((category) => (
+              <option value={category.id} selected={product?.category_id === category.id}>
+                {category.name}
+              </option>
+            ))
+          }
+        </select>
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.product.status')}</span>
+        <select
+          name="status"
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        >
+          <option value="draft" selected={(product?.status ?? 'draft') === 'draft'}>
+            {t(locale, 'admin.product.draft')}
+          </option>
+          <option value="active" selected={product?.status === 'active'}>
+            {t(locale, 'admin.product.active')}
+          </option>
+          <option value="archived" selected={product?.status === 'archived'}>
+            {t(locale, 'admin.product.archived')}
+          </option>
+        </select>
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">
+          {t(locale, 'admin.product.price', { symbol: currencySymbol })}
+        </span>
+        <input
+          name="price"
+          type="number"
+          min="0"
+          step="1"
+          required
+          value={product?.price ?? 0}
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        />
+      </label>
+
+      <label class="block text-sm">
+        <span class="mb-1 block font-medium">
+          {t(locale, 'admin.product.compareAtPrice', { symbol: currencySymbol })}
+        </span>
+        <input
+          name="compare_at_price"
+          type="number"
+          min="0"
+          step="1"
+          value={product?.compare_at_price ?? ''}
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+        />
+      </label>
+
+      <label class="block text-sm sm:col-span-2">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.product.attributes')}</span>
+        <textarea
+          name="attributes"
+          rows="2"
+          placeholder={t(locale, 'admin.product.attributesHint')}
+          class="w-full rounded border border-slate-300 px-3 py-2 font-mono text-sm focus:border-teal-600 focus:outline-none"
+        >{attributesToText(product?.attributes ?? {})}</textarea>
+        <span class="mt-1 block text-xs text-slate-500">{t(locale, 'admin.product.attributesHint')}</span>
+      </label>
+
+      <div class="flex flex-wrap gap-5 sm:col-span-2">
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            name="track_stock"
+            type="checkbox"
+            checked={product?.track_stock ?? true}
+            class="size-4 rounded border-slate-300"
+          />
+          <span class="font-medium">{t(locale, 'admin.product.trackStock')}</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            name="featured"
+            type="checkbox"
+            checked={product?.featured ?? false}
+            class="size-4 rounded border-slate-300"
+          />
+          <span class="font-medium">{t(locale, 'admin.product.featured')}</span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section class="rounded-xl bg-white p-5 shadow-sm">
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="text-lg font-medium">{t(locale, 'admin.product.variants')}</h2>
+      <button
+        id="add-variant"
+        type="button"
+        class="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+      >
+        + {t(locale, 'admin.product.addVariant')}
+      </button>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[42rem] text-left text-sm">
+        <thead class="text-xs uppercase text-slate-500">
+          <tr>
+            <th class="px-2 py-2">{t(locale, 'admin.product.variantTitle')}</th>
+            <th class="px-2 py-2">{t(locale, 'admin.product.sku')}</th>
+            <th class="px-2 py-2">{t(locale, 'admin.product.options')}</th>
+            <th class="px-2 py-2">
+              {t(locale, 'admin.product.variantPrice', { symbol: currencySymbol })}
+            </th>
+            <th class="px-2 py-2">{t(locale, 'admin.product.stock')}</th>
+            <th class="px-2 py-2"></th>
+          </tr>
+        </thead>
+        <tbody id="variant-rows" class="divide-y divide-slate-100">
+          {
+            (product?.variants ?? []).map((variant) => (
+              <tr class="variant-row">
+                <td class="px-2 py-2">
+                  <input type="hidden" name="variant_id" value={variant.id} />
+                  <input
+                    name="variant_title"
+                    required
+                    value={variant.title}
+                    class="w-full rounded border border-slate-300 px-2 py-1"
+                  />
+                </td>
+                <td class="px-2 py-2">
+                  <input
+                    name="variant_sku"
+                    value={variant.sku ?? ''}
+                    class="w-full rounded border border-slate-300 px-2 py-1"
+                  />
+                </td>
+                <td class="px-2 py-2">
+                  <input
+                    name="variant_options"
+                    value={optionsToText(variant.options)}
+                    placeholder={t(locale, 'admin.product.optionsHint')}
+                    class="w-full rounded border border-slate-300 px-2 py-1"
+                  />
+                </td>
+                <td class="px-2 py-2">
+                  <input
+                    name="variant_price"
+                    type="number"
+                    min="0"
+                    value={variant.price ?? ''}
+                    class="w-24 rounded border border-slate-300 px-2 py-1"
+                  />
+                </td>
+                <td class="px-2 py-2">
+                  <input
+                    name="variant_stock"
+                    type="number"
+                    min="0"
+                    value={variant.stock}
+                    class="w-20 rounded border border-slate-300 px-2 py-1"
+                  />
+                </td>
+                <td class="px-2 py-2">
+                  <button type="button" class="js-remove-variant text-xs text-rose-700 hover:underline">
+                    {t(locale, 'admin.product.removeVariant')}
+                  </button>
+                  <label class="mt-1 flex items-center gap-1 text-xs text-slate-500">
+                    <input type="checkbox" name="variant_active" checked={variant.active} />
+                    {t(locale, 'admin.category.active')}
+                  </label>
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="flex flex-wrap items-center gap-3">
+    <button
+      type="submit"
+      class="rounded bg-teal-700 px-5 py-2 font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+    >
+      {t(locale, 'admin.product.save')}
+    </button>
+    <a href="/admin/products" class="text-sm text-slate-600 hover:text-slate-900">
+      {t(locale, 'admin.product.backToList')}
+    </a>
+    <span id="save-status" class="text-sm text-emerald-700"></span>
+  </div>
+</form>
+
+{
+  product && (
+    <section class="mt-6 rounded-xl bg-white p-5 shadow-sm">
+      <h2 class="mb-4 text-lg font-medium">{t(locale, 'admin.product.images')}</h2>
+
+      <div id="image-list" class="mb-5 grid gap-3 sm:grid-cols-3">
+        {product.images.length === 0 ? (
+          <p class="text-sm text-slate-500">—</p>
+        ) : (
+          product.images.map((image) => (
+            <figure class="overflow-hidden rounded border border-slate-200">
+              <img
+                src={imageUrl(image.r2_key, 'thumb', publicUrl)}
+                alt={image.alt ?? ''}
+                width="400"
+                height="400"
+                loading="lazy"
+                class="aspect-square w-full object-cover"
+              />
+              <figcaption class="flex items-center justify-between gap-2 px-2 py-1 text-xs">
+                <span class="truncate text-slate-500">{image.r2_key}</span>
+                <button
+                  type="button"
+                  class="js-delete-image text-rose-700 hover:underline"
+                  data-id={image.id}
+                >
+                  {t(locale, 'admin.product.deleteImage')}
+                </button>
+              </figcaption>
+            </figure>
+          ))
+        )}
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium">{t(locale, 'admin.product.upload')}</span>
+          <input
+            id="image-file"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            class="block w-full text-sm"
+          />
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block font-medium">{t(locale, 'admin.product.imageAlt')}</span>
+          <input
+            id="image-alt"
+            maxlength="200"
+            class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none"
+          />
+        </label>
+        <button
+          id="upload-image"
+          type="button"
+          class="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+        >
+          {t(locale, 'admin.product.upload')}
+        </button>
+      </div>
+      <p class="mt-2 text-xs text-slate-500">{t(locale, 'admin.product.uploadHint')}</p>
+      <p id="upload-status" class="mt-2 hidden text-sm"></p>
+    </section>
+  )
+}
+
+<template id="variant-template">
+  <tr class="variant-row">
+    <td class="px-2 py-2">
+      <input type="hidden" name="variant_id" value="" />
+      <input name="variant_title" required class="w-full rounded border border-slate-300 px-2 py-1" />
+    </td>
+    <td class="px-2 py-2">
+      <input name="variant_sku" class="w-full rounded border border-slate-300 px-2 py-1" />
+    </td>
+    <td class="px-2 py-2">
+      <input
+        name="variant_options"
+        placeholder={t(locale, 'admin.product.optionsHint')}
+        class="w-full rounded border border-slate-300 px-2 py-1"
+      />
+    </td>
+    <td class="px-2 py-2">
+      <input name="variant_price" type="number" min="0" class="w-24 rounded border border-slate-300 px-2 py-1" />
+    </td>
+    <td class="px-2 py-2">
+      <input name="variant_stock" type="number" min="0" value="0" class="w-20 rounded border border-slate-300 px-2 py-1" />
+    </td>
+    <td class="px-2 py-2">
+      <button type="button" class="js-remove-variant text-xs text-rose-700 hover:underline">
+        {t(locale, 'admin.product.removeVariant')}
+      </button>
+      <label class="mt-1 flex items-center gap-1 text-xs text-slate-500">
+        <input type="checkbox" name="variant_active" checked />
+        {t(locale, 'admin.category.active')}
+      </label>
+    </td>
+  </tr>
+</template>
+
+<script>
+  import { adminErrorMessage } from '../scripts/admin-errors';
+
+  const form = document.getElementById('product-form') as HTMLFormElement | null;
+  const variantRows = document.getElementById('variant-rows');
+  const template = document.getElementById('variant-template') as HTMLTemplateElement | null;
+  const addVariant = document.getElementById('add-variant');
+  const saveStatus = document.getElementById('save-status');
+
+  function parsePairs(value: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const part of value.split(',')) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const separator = trimmed.indexOf('=');
+      if (separator === -1) continue;
+      const key = trimmed.slice(0, separator).trim();
+      const pairValue = trimmed.slice(separator + 1).trim();
+      if (key) result[key] = pairValue;
+    }
+    return result;
+  }
+
+  function parseAttributes(value: string): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const line of value.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const separator = trimmed.indexOf('=');
+      if (separator === -1) continue;
+      const key = trimmed.slice(0, separator).trim();
+      const pairValue = trimmed.slice(separator + 1).trim();
+      if (key) result[key] = pairValue;
+    }
+    return result;
+  }
+
+  function collectVariants() {
+    if (!variantRows) return [];
+    return [...variantRows.querySelectorAll<HTMLTableRowElement>('.variant-row')].map((row) => {
+      const get = (name: string) => row.querySelector<HTMLInputElement>(`[name="${name}"]`);
+      const idValue = get('variant_id')?.value ?? '';
+      const priceValue = get('variant_price')?.value ?? '';
+      const stockValue = get('variant_stock')?.value ?? '0';
+      return {
+        ...(idValue ? { id: Number(idValue) } : {}),
+        title: get('variant_title')?.value.trim() ?? '',
+        sku: get('variant_sku')?.value.trim() || null,
+        options: parsePairs(get('variant_options')?.value ?? ''),
+        price: priceValue === '' ? null : Number(priceValue),
+        stock: Number(stockValue || 0),
+        active: get('variant_active')?.checked ?? true,
+      };
+    });
+  }
+
+  function collect() {
+    if (!form) return null;
+    const data = new FormData(form);
+    const text = (name: string) => String(data.get(name) ?? '').trim();
+    const price = text('price');
+
+    return {
+      title: text('title'),
+      title_bn: text('title_bn') || null,
+      slug: text('slug'),
+      description: text('description') || null,
+      description_bn: text('description_bn') || null,
+      category_id: text('category_id') ? Number(text('category_id')) : null,
+      price: Number(price || 0),
+      compare_at_price: text('compare_at_price') ? Number(text('compare_at_price')) : null,
+      status: text('status') || 'draft',
+      track_stock: data.get('track_stock') === 'on',
+      attributes: parseAttributes(text('attributes')),
+      featured: data.get('featured') === 'on',
+      variants: collectVariants(),
+    };
+  }
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const body = collect();
+    if (!form || !body) return;
+
+    const id = form.dataset.productId ?? '';
+    const button = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+    if (button) button.disabled = true;
+
+    try {
+      const response = await fetch(id ? `/api/admin/products/${id}` : '/api/admin/products', {
+        method: id ? 'PATCH' : 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        data?: { id: number };
+        error?: { code?: string };
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        window.alert(
+          adminErrorMessage(payload?.error?.code, form.dataset.saveFailed ?? ''),
+        );
+        return;
+      }
+
+      if (!id && payload.data?.id) {
+        window.location.assign(`/admin/products/${payload.data.id}`);
+        return;
+      }
+
+      if (saveStatus) {
+        saveStatus.textContent = form.dataset.saved ?? '';
+        window.setTimeout(() => {
+          if (saveStatus) saveStatus.textContent = '';
+        }, 2000);
+      }
+      window.location.reload();
+    } finally {
+      if (button) button.disabled = false;
+    }
+  });
+
+  addVariant?.addEventListener('click', () => {
+    if (!variantRows || !template) return;
+    const clone = template.content.firstElementChild?.cloneNode(true) as HTMLElement | null;
+    if (!clone) return;
+    variantRows.appendChild(clone);
+    clone.querySelector<HTMLInputElement>('[name="variant_title"]')?.focus();
+  });
+
+  document.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    if (!target.classList.contains('js-remove-variant')) return;
+    target.closest('.variant-row')?.remove();
+  });
+
+  async function resizeToWebP(file: File, width: number): Promise<Blob> {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, width / bitmap.width);
+    const targetWidth = Math.max(1, Math.round(bitmap.width * scale));
+    const targetHeight = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas is not available');
+    context.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+    bitmap.close();
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/webp', 0.8),
+    );
+    if (!blob) throw new Error('Could not encode WebP');
+    return blob;
+  }
+
+  const uploadButton = document.getElementById('upload-image') as HTMLButtonElement | null;
+  const fileInput = document.getElementById('image-file') as HTMLInputElement | null;
+  const altInput = document.getElementById('image-alt') as HTMLInputElement | null;
+  const uploadStatus = document.getElementById('upload-status');
+
+  function setUploadStatus(message: string, error = false) {
+    if (!uploadStatus) return;
+    uploadStatus.textContent = message;
+    uploadStatus.classList.remove('hidden');
+    uploadStatus.classList.toggle('text-rose-700', error);
+    uploadStatus.classList.toggle('text-slate-600', !error);
+  }
+
+  uploadButton?.addEventListener('click', async () => {
+    if (!form || !fileInput?.files?.[0]) return;
+    const productId = form.dataset.productId ?? '';
+    if (!productId) return;
+
+    uploadButton.disabled = true;
+    setUploadStatus(form.dataset.uploading ?? '…');
+
+    try {
+      const file = fileInput.files[0];
+      const [thumb, md, full] = await Promise.all([
+        resizeToWebP(file, 400),
+        resizeToWebP(file, 800),
+        resizeToWebP(file, 1600),
+      ]);
+
+      const data = new FormData();
+      data.set('product_id', productId);
+      if (altInput?.value.trim()) data.set('alt', altInput.value.trim());
+      data.set('thumb', new File([thumb], 'thumb.webp', { type: 'image/webp' }));
+      data.set('md', new File([md], 'md.webp', { type: 'image/webp' }));
+      data.set('full', new File([full], 'full.webp', { type: 'image/webp' }));
+
+      const response = await fetch('/api/admin/upload', {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: data,
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { code?: string };
+        } | null;
+        setUploadStatus(
+          adminErrorMessage(payload?.error?.code, form.dataset.uploadFailed ?? ''),
+          true,
+        );
+        return;
+      }
+
+      window.location.reload();
+    } catch {
+      setUploadStatus(form.dataset.uploadFailed ?? '', true);
+    } finally {
+      uploadButton.disabled = false;
+    }
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.js-delete-image').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!form || !window.confirm(form.dataset.deleteImageConfirm ?? '')) return;
+
+      const response = await fetch(`/api/admin/images/${button.dataset.id}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { code?: string };
+        } | null;
+        window.alert(
+          adminErrorMessage(payload?.error?.code, form.dataset.deleteFailed ?? ''),
+        );
+        return;
+      }
+
+      window.location.reload();
+    });
+  });
+</script>

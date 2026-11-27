@@ -1,0 +1,32 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import AdminProductForm from '../../../components/AdminProductForm.astro';
+import { resolveAdminLocale } from '../../../lib/admin-locale';
+import { t } from '../../../lib/i18n';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('admin_locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+
+const { results: categories } = await env.DB.prepare(
+  'SELECT id, name FROM categories ORDER BY sort, id',
+).all<{ id: number; name: string }>();
+---
+
+<AdminLayout title={t(locale, 'admin.product.new')} locale={locale} current="product">
+  <div class="mb-6 flex items-center justify-between">
+    <h1 class="text-2xl font-semibold">{t(locale, 'admin.product.new')}</h1>
+    <a href="/admin/products" class="text-sm text-slate-600 hover:text-slate-900">
+      {t(locale, 'admin.product.backToList')}
+    </a>
+  </div>
+
+  <AdminProductForm locale={locale} product={null} categories={categories} />
+</AdminLayout>

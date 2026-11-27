@@ -1,0 +1,123 @@
+---
+import '../../styles/global.css';
+import { env } from 'cloudflare:workers';
+import { resolveAdminLocale } from '../../lib/admin-locale';
+import { ADMIN_COOKIE_NAME, verifySessionCookie } from '../../lib/auth';
+import { t } from '../../lib/i18n';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('admin_locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+
+const cookie = Astro.cookies.get(ADMIN_COOKIE_NAME)?.value;
+if (env.ADMIN_PASSPHRASE && cookie) {
+  const session = await verifySessionCookie(cookie, env.DB, env.ADMIN_PASSPHRASE);
+  if (session) return Astro.redirect('/admin');
+}
+
+const nextParam = Astro.url.searchParams.get('next') ?? '/admin';
+const next = nextParam.startsWith('/admin') ? nextParam : '/admin';
+const otherLocale = locale === 'bn' ? 'en' : 'bn';
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{t(locale, 'admin.loginTitle')}</title>
+  </head>
+  <body class="flex min-h-screen items-center justify-center bg-slate-100 px-4 text-slate-900 antialiased">
+    <main class="w-full max-w-sm rounded-xl bg-white p-6 shadow">
+      <div class="mb-6 flex items-center justify-between">
+        <h1 class="text-xl font-semibold">{t(locale, 'admin.loginTitle')}</h1>
+        <a href={`/admin/login?lang=${otherLocale}`} class="text-xs uppercase text-slate-500 hover:text-slate-800">
+          {otherLocale}
+        </a>
+      </div>
+
+      <form
+        id="login-form"
+        class="space-y-4"
+        data-next={next}
+        data-error={t(locale, 'admin.loginError')}
+        data-rate={t(locale, 'admin.rateLimited')}
+        data-config={t(locale, 'admin.notConfigured')}
+        data-network={t(locale, 'errors.network')}
+      >
+        <label class="block text-sm font-medium" for="passphrase">
+          {t(locale, 'admin.passphrase')}
+        </label>
+        <input
+          id="passphrase"
+          name="passphrase"
+          type="password"
+          required
+          autocomplete="current-password"
+          autofocus
+          class="w-full rounded border border-slate-300 px-3 py-2 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-200"
+        />
+        <p id="login-error" class="hidden rounded bg-rose-50 px-3 py-2 text-sm text-rose-700"></p>
+        <button
+          type="submit"
+          class="w-full rounded bg-teal-700 px-4 py-2 font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+        >
+          {t(locale, 'admin.login')}
+        </button>
+      </form>
+
+      <a href="/" class="mt-4 block text-center text-sm text-slate-500 hover:text-slate-800">
+        {t(locale, 'admin.backToShop')}
+      </a>
+    </main>
+
+    <script>
+      const form = document.getElementById('login-form') as HTMLFormElement | null;
+      const errorBox = document.getElementById('login-error');
+      const input = document.getElementById('passphrase') as HTMLInputElement | null;
+
+      function show(message: string) {
+        if (!errorBox) return;
+        errorBox.textContent = message;
+        errorBox.classList.remove('hidden');
+      }
+
+      form?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        errorBox?.classList.add('hidden');
+
+        const button = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+        if (button) button.disabled = true;
+
+        try {
+          const response = await fetch('/api/admin/login', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ passphrase: input?.value ?? '' }),
+          });
+
+          if (response.ok) {
+            window.location.assign(form.dataset.next ?? '/admin');
+            return;
+          }
+
+          if (response.status === 429) show(form.dataset.rate ?? '');
+          else if (response.status === 503) show(form.dataset.config ?? '');
+          else show(form.dataset.error ?? '');
+        } catch {
+          show(form.dataset.network ?? '');
+        } finally {
+          if (button) button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

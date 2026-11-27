@@ -1,0 +1,139 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { resolveAdminLocale } from '../../lib/admin-locale';
+import { t } from '../../lib/i18n';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('admin_locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+
+const [products, active, categories] = await Promise.all([
+  env.DB.prepare('SELECT COUNT(*) AS count FROM products').first<{ count: number }>(),
+  env.DB.prepare("SELECT COUNT(*) AS count FROM products WHERE status = 'active'").first<{
+    count: number;
+  }>(),
+  env.DB.prepare('SELECT COUNT(*) AS count FROM categories').first<{ count: number }>(),
+]);
+
+const cards = [
+  {
+    label: t(locale, 'admin.stats.products'),
+    value: products?.count ?? 0,
+    href: '/admin/products',
+  },
+  {
+    label: t(locale, 'admin.stats.active'),
+    value: active?.count ?? 0,
+    href: '/admin/products?status=active',
+  },
+  {
+    label: t(locale, 'admin.stats.categories'),
+    value: categories?.count ?? 0,
+    href: '/admin/categories',
+  },
+];
+---
+
+<AdminLayout title={t(locale, 'admin.dashboard')} locale={locale} current="dashboard">
+  <h1 class="mb-6 text-2xl font-semibold">{t(locale, 'admin.welcome')}</h1>
+
+  <div class="grid gap-4 sm:grid-cols-3">
+    {
+      cards.map((card) => (
+        <a
+          href={card.href}
+          class="rounded-xl bg-white p-5 shadow-sm transition hover:shadow"
+        >
+          <span class="block text-sm text-slate-500">{card.label}</span>
+          <span class="mt-1 block text-3xl font-semibold text-teal-800">{card.value}</span>
+        </a>
+      ))
+    }
+  </div>
+
+  <div class="mt-6 flex flex-wrap gap-3">
+    <a
+      href="/admin/products/new"
+      class="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+    >
+      {t(locale, 'admin.product.new')}
+    </a>
+    <a
+      href="/admin/categories"
+      class="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+    >
+      {t(locale, 'admin.category.new')}
+    </a>
+    <button
+      id="reindex-search"
+      type="button"
+      class="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-60"
+      data-running={t(locale, 'admin.reindex.running')}
+      data-done={t(locale, 'admin.reindex.done')}
+      data-failed={t(locale, 'admin.reindex.failed')}
+    >
+      {t(locale, 'admin.reindex.action')}
+    </button>
+  </div>
+  <p id="reindex-status" class="mt-2 hidden text-sm" aria-live="polite"></p>
+</AdminLayout>
+
+<script>
+  import { adminErrorMessage } from '../../scripts/admin-errors';
+
+  const button = document.getElementById('reindex-search') as HTMLButtonElement | null;
+  const status = document.getElementById('reindex-status');
+
+  button?.addEventListener('click', async () => {
+    button.disabled = true;
+    if (status) {
+      status.textContent = button.dataset.running ?? '';
+      status.className = 'mt-2 text-sm text-slate-600';
+    }
+
+    try {
+      const response = await fetch('/api/admin/search/reindex', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        data?: { products: number };
+        error?: { code?: string };
+      } | null;
+
+      if (!response.ok || !payload?.ok) {
+        if (status) {
+          status.textContent = adminErrorMessage(
+            payload?.error?.code,
+            button.dataset.failed ?? '',
+          );
+          status.className = 'mt-2 text-sm text-rose-700';
+        }
+        return;
+      }
+
+      if (status) {
+        status.textContent = (button.dataset.done ?? '').replace(
+          '{count}',
+          String(payload.data?.products ?? 0),
+        );
+        status.className = 'mt-2 text-sm text-emerald-700';
+      }
+    } catch {
+      if (status) {
+        status.textContent = button.dataset.failed ?? '';
+        status.className = 'mt-2 text-sm text-rose-700';
+      }
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>

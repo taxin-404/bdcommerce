@@ -2,6 +2,17 @@
 
 Read this file first in every session. Then read `PLAN.md` and work on **one phase at a time**.
 
+## Repository
+
+- Canonical template: <https://github.com/taxin-404/bdcommerce>. Keep the repository public so the Deploy to Cloudflare button works.
+- Deployed shops are forks. Pull template updates with `scripts/sync-upstream.sh`; keep business-specific changes in `site.config.ts` and the `settings` table.
+- Work on one `phase-N` branch per phase. Never commit real Cloudflare resource IDs or secrets.
+
+## Dependency release age
+
+- pnpm applies a release-age cooldown to newly published versions. Never bypass it with `minimumReleaseAgeExclude`.
+- Choose a version that is old enough to clear the cooldown, and pin runtime-sensitive packages exactly when required (`hono` is `4.13.18`, no `^`).
+
 ## What this project is
 
 A reusable, config-driven e-commerce template for small Bangladeshi businesses (any business type:
@@ -76,7 +87,8 @@ The primary install path is the **Deploy to Cloudflare** button, used by non-dev
 - Vitest for unit tests (pricing, validation, phone/address helpers)
 - `wrangler.jsonc` for config; `pnpm` as package manager
 
-**Before using any Cloudflare / Astro / Drizzle API, check the current official docs** (web search or docs tool).
+**Before using any Cloudflare / Astro / Drizzle / Hono API, check the current official docs with Context7**
+(`npx ctx7@latest library <name> "<topic>"`, then `npx ctx7@latest docs <id> "<topic>"`) or the official docs site.
 Do not rely on memory for adapter options, binding syntax, or wrangler config — they change often.
 
 ## Conventions
@@ -111,6 +123,7 @@ pnpm run deploy          # remote D1 migrations + wrangler deploy (use `run`: pl
 ## Workflow rules for the agent
 
 - Work on **one phase** of `PLAN.md` per session. Do not start the next phase unless asked.
+- **Wrangler safety:** never run a remote or destructive Wrangler command (`deploy`, `delete`, `secret`, `login`/`logout`, R2 remote, or anything with `--remote`) unless the human explicitly asks. Use local D1/R2 for development and verification.
 - Start by stating a short plan, then implement. Prefer small, reviewable diffs.
 - After each phase: run `pnpm typecheck && pnpm test && pnpm build`, fix errors, then summarize what changed and
   what to manually test. Do not claim something works without running it.

@@ -1,0 +1,80 @@
+---
+import { env } from 'cloudflare:workers';
+import StorefrontLayout from '../layouts/StorefrontLayout.astro';
+import HomeSections from '../components/home/HomeSections.astro';
+import { PRODUCT_CARD_SELECT, type CategoryNavRow, type ProductCardRow } from '../lib/catalog';
+import { resolveLocale } from '../lib/locale';
+import { countCalls, logQueryCount } from '../lib/query-log';
+import { loadStorefront } from '../lib/storefront';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+
+const { value: db, count } = countCalls(env.DB);
+const { config, sections } = await loadStorefront(db);
+const locale = resolveLocale(
+  config.locale.default,
+  config.locale.available,
+  requested,
+  Astro.cookies.get('locale')?.value,
+);
+
+const { results: categories } = await db
+  .prepare(
+    `SELECT id, slug, name, name_bn, image_key, parent_id
+       FROM categories
+      WHERE active = 1 AND parent_id IS NULL
+      ORDER BY sort, id
+      LIMIT 12`,
+  )
+  .all<CategoryNavRow>();
+
+const { results: featured } = await db
+  .prepare(
+    `SELECT ${PRODUCT_CARD_SELECT}
+       FROM products p
+      WHERE p.status = 'active' AND p.featured = 1
+      ORDER BY p.id DESC
+      LIMIT 8`,
+  )
+  .all<ProductCardRow>();
+
+const { results: newProducts } = await db
+  .prepare(
+    `SELECT ${PRODUCT_CARD_SELECT}
+       FROM products p
+      WHERE p.status = 'active'
+      ORDER BY p.id DESC
+      LIMIT 8`,
+  )
+  .all<ProductCardRow>();
+
+logQueryCount('home', count());
+
+const shopName = config.name[locale] || config.name.en;
+const tagline = config.tagline[locale] || config.tagline.en;
+const publicUrl = env.R2_PUBLIC_URL ?? '';
+---
+
+<StorefrontLayout
+  title={`${shopName} · ${tagline}`}
+  description={tagline}
+  locale={locale}
+  config={config}
+>
+  <HomeSections
+    sections={sections}
+    config={config}
+    locale={locale}
+    categories={categories}
+    featured={featured}
+    newProducts={newProducts}
+    publicUrl={publicUrl}
+  />
+</StorefrontLayout>

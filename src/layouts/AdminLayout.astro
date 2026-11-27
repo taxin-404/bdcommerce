@@ -1,0 +1,112 @@
+---
+import '../styles/global.css';
+import { env } from 'cloudflare:workers';
+import { t } from '../lib/i18n';
+import type { AdminLocale } from '../lib/admin-locale';
+
+interface Props {
+  title: string;
+  locale: AdminLocale;
+  current?: 'dashboard' | 'categories' | 'products' | 'product';
+}
+
+const { title, locale, current } = Astro.props;
+const otherLocale: AdminLocale = locale === 'bn' ? 'en' : 'bn';
+const langHref = `${Astro.url.pathname}?lang=${otherLocale}`;
+const showR2Banner = !env.R2_PUBLIC_URL?.trim();
+
+const errorCodes = [
+  'duplicateSku',
+  'categoryInUse',
+  'categoryHasChildren',
+  'invalidParent',
+  'invalidCategory',
+  'invalidVariant',
+  'notFound',
+  'unauthorized',
+  'fileTooLarge',
+  'invalidType',
+  'missingFile',
+  'invalidProduct',
+  'badOrigin',
+  'rateLimited',
+  'adminNotConfigured',
+] as const;
+const adminErrors = Object.fromEntries(
+  errorCodes.map((code) => [code, t(locale, `admin.errors.${code}`)]),
+);
+const adminErrorsJson = JSON.stringify(adminErrors).replace(/</g, '\\u003c');
+
+const navItems = [
+  { key: 'dashboard', href: '/admin', label: t(locale, 'admin.dashboard') },
+  { key: 'products', href: '/admin/products', label: t(locale, 'admin.products') },
+  { key: 'categories', href: '/admin/categories', label: t(locale, 'admin.categories') },
+] as const;
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{`${title} · ${t(locale, 'admin.title')}`}</title>
+  </head>
+  <body class="min-h-screen bg-slate-100 text-slate-900 antialiased">
+    <header class="bg-teal-800 text-white shadow-sm">
+      <div class="mx-auto flex max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+        <a href="/admin" class="text-lg font-semibold">{t(locale, 'admin.title')}</a>
+        <nav class="flex flex-1 flex-wrap gap-1 text-sm">
+          {
+            navItems.map((item) => (
+              <a
+                href={item.href}
+                class:list={[
+                  'rounded px-3 py-1.5 transition',
+                  current === item.key ||
+                  (item.key === 'products' && current === 'product')
+                    ? 'bg-teal-700 font-medium'
+                    : 'hover:bg-teal-700/60',
+                ]}
+              >
+                {item.label}
+              </a>
+            ))
+          }
+        </nav>
+        <a href={langHref} class="rounded border border-teal-600 px-2 py-1 text-xs uppercase">
+          {otherLocale}
+        </a>
+        <button
+          id="admin-logout"
+          type="button"
+          class="rounded bg-teal-950/40 px-3 py-1.5 text-sm hover:bg-teal-950/70"
+        >
+          {t(locale, 'admin.logout')}
+        </button>
+      </div>
+    </header>
+
+    {
+      showR2Banner && (
+        <div class="border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+          {t(locale, 'admin.r2Banner')}
+        </div>
+      )
+    }
+
+    <main class="mx-auto max-w-5xl px-4 py-6">
+      <slot />
+    </main>
+
+    <script type="application/json" id="admin-error-messages" set:html={adminErrorsJson} />
+
+    <script>
+      const logout = document.getElementById('admin-logout');
+      logout?.addEventListener('click', async () => {
+        await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+        window.location.assign('/admin/login');
+      });
+    </script>
+  </body>
+</html>

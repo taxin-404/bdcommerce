@@ -1,0 +1,10 @@
+[data-theme='soft'] {
+  --color-bg: #fdf6f0;
+  --color-surface: #fffaf6;
+  --color-text: #3f3a36;
+  --color-muted: #8a7f76;
+  --color-border: #f0e2d8;
+  --color-primary-contrast: #ffffff;
+  --color-accent-contrast: #3f3a36;
+  --shadow-card: 0 6px 20px rgb(120 90 70 / 0.08);
+}

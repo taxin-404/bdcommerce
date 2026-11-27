@@ -1,0 +1,135 @@
+---
+import '../styles/global.css';
+import type { SiteConfig } from '../lib/config';
+import type { Locale } from '../lib/i18n';
+import { t } from '../lib/i18n';
+import { themeStyle } from '../lib/theme';
+
+interface Props {
+  title: string;
+  description?: string;
+  locale: Locale;
+  config: SiteConfig;
+}
+
+const { title, description, locale, config } = Astro.props;
+const otherLocale: Locale = locale === 'bn' ? 'en' : 'bn';
+const langUrl = new URL(Astro.url);
+langUrl.searchParams.set('lang', otherLocale);
+
+const shopName = config.name[locale] || config.name.en;
+const tagline = config.tagline[locale] || config.tagline.en;
+const descriptionText = description ?? tagline;
+const searchQuery = Astro.url.pathname === '/shop' ? (Astro.url.searchParams.get('q') ?? '') : '';
+const hasContact = Boolean(config.contact.phone || config.contact.email);
+const socials = [
+  { href: config.social.facebook, label: 'Facebook' },
+  { href: config.social.messenger, label: 'Messenger' },
+  { href: config.social.whatsapp, label: 'WhatsApp' },
+  { href: config.social.instagram, label: 'Instagram' },
+].filter((item) => item.href);
+---
+
+<!doctype html>
+<html
+  lang={locale}
+  data-theme={config.theme.preset}
+  style={themeStyle(config.theme)}
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="description" content={descriptionText} />
+    <meta name="theme-color" content={config.theme.primary} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{title}</title>
+    <slot name="head" />
+  </head>
+  <body class="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)] antialiased">
+    <header class="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3">
+        <a href="/" class="text-lg font-semibold text-[var(--color-primary)]">
+          {shopName}
+        </a>
+
+        <nav class="flex items-center gap-4 text-sm">
+          <a href="/" class="hover:text-[var(--color-primary)]">{t(locale, 'common.home')}</a>
+          <a href="/shop" class="hover:text-[var(--color-primary)]">{t(locale, 'common.shop')}</a>
+        </nav>
+
+        <form action="/shop" method="get" role="search" class="ml-auto flex min-w-0 flex-1 items-center gap-2 sm:max-w-xs">
+          <label class="sr-only" for="storefront-search">{t(locale, 'common.search')}</label>
+          <input
+            id="storefront-search"
+            type="search"
+            name="q"
+            value={searchQuery}
+            placeholder={t(locale, 'storefront.searchPlaceholder')}
+            class="w-full rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-1.5 text-sm outline-none focus:border-[var(--color-primary)]"
+          />
+          <button type="submit" class="btn-primary px-3 py-1.5 text-sm">
+            {t(locale, 'common.search')}
+          </button>
+        </form>
+
+        <a
+          href={langUrl.pathname + langUrl.search}
+          class="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold uppercase"
+          hreflang={otherLocale}
+        >
+          {otherLocale}
+        </a>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-4 py-6">
+      <slot />
+    </main>
+
+    <footer class="mt-12 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div class="mx-auto grid max-w-6xl gap-6 px-4 py-8 text-sm sm:grid-cols-2">
+        <div>
+          <p class="font-semibold text-[var(--color-primary)]">{shopName}</p>
+          <p class="mt-1 text-muted">{tagline}</p>
+        </div>
+        {
+          hasContact && (
+            <div class="sm:text-right">
+              {config.contact.phone && (
+                <p>
+                  <a href={`tel:${config.contact.phone}`} class="hover:text-[var(--color-primary)]">
+                    {config.contact.phone}
+                  </a>
+                </p>
+              )}
+              {config.contact.email && (
+                <p>
+                  <a href={`mailto:${config.contact.email}`} class="hover:text-[var(--color-primary)]">
+                    {config.contact.email}
+                  </a>
+                </p>
+              )}
+            </div>
+          )
+        }
+      </div>
+      {
+        socials.length > 0 && (
+          <div class="mx-auto flex max-w-6xl gap-4 px-4 pb-6 text-sm">
+            {socials.map((social) => (
+              <a
+                href={social.href}
+                rel="noopener noreferrer"
+                target="_blank"
+                class="hover:text-[var(--color-primary)]"
+              >
+                {social.label}
+              </a>
+            ))}
+          </div>
+        )
+      }
+    </footer>
+  </body>
+</html>

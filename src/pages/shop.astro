@@ -1,0 +1,291 @@
+---
+import { env } from 'cloudflare:workers';
+import StorefrontLayout from '../layouts/StorefrontLayout.astro';
+import ProductCard from '../components/ProductCard.astro';
+import { PRODUCT_CARD_SELECT, type CategoryNavRow, type ProductCardRow } from '../lib/catalog';
+import { t } from '../lib/i18n';
+import { pickLocalized, resolveLocale } from '../lib/locale';
+import { toBanglaDigits } from '../lib/money';
+import { countCalls, logQueryCount } from '../lib/query-log';
+import { buildFtsQuery } from '../lib/search';
+import {
+  SHOP_PAGE_SIZE,
+  encodeCursor,
+  parseShopQuery,
+  type ShopSort,
+} from '../lib/shop';
+import { loadStorefront } from '../lib/storefront';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+
+const { value: db, count } = countCalls(env.DB);
+const { config } = await loadStorefront(db);
+const locale = resolveLocale(
+  config.locale.default,
+  config.locale.available,
+  requested,
+  Astro.cookies.get('locale')?.value,
+);
+
+const query = parseShopQuery(Astro.url.searchParams);
+const ftsQuery = query.q ? buildFtsQuery(query.q) : null;
+const searchImpossible = Boolean(query.q) && !ftsQuery;
+
+const { results: categories } = await db
+  .prepare(
+    `SELECT id, slug, name, name_bn, image_key, parent_id
+       FROM categories
+      WHERE active = 1
+      ORDER BY parent_id IS NOT NULL, sort, id`,
+  )
+  .all<CategoryNavRow>();
+
+const selectedCategory = query.category
+  ? categories.find((category) => category.slug === query.category)
+  : undefined;
+const categoryIds = selectedCategory
+  ? [
+      selectedCategory.id,
+      ...categories
+        .filter((category) => category.parent_id === selectedCategory.id)
+        .map((category) => category.id),
+    ]
+  : [];
+
+const where: string[] = ["p.status = 'active'"];
+const bindings: unknown[] = [];
+let from = 'FROM products p';
+
+if (ftsQuery) {
+  from += ' JOIN product_fts ON product_fts.rowid = p.id';
+  where.push('product_fts MATCH ?');
+  bindings.push(ftsQuery);
+}
+
+if (categoryIds.length) {
+  where.push(`p.category_id IN (${categoryIds.map(() => '?').join(', ')})`);
+  bindings.push(...categoryIds);
+}
+
+if (query.cursor) {
+  if (query.sort === 'new') {
+    where.push('p.id < ?');
+    bindings.push(query.cursor.id);
+  } else if (query.cursor.price !== undefined) {
+    const comparison = query.sort === 'price-asc' ? '>' : '<';
+    where.push(`(p.price ${comparison} ? OR (p.price = ? AND p.id < ?))`);
+    bindings.push(query.cursor.price, query.cursor.price, query.cursor.id);
+  }
+}
+
+const orderBy =
+  query.sort === 'new'
+    ? 'p.id DESC'
+    : query.sort === 'price-asc'
+      ? 'p.price ASC, p.id DESC'
+      : 'p.price DESC, p.id DESC';
+
+const { results: rows } = searchImpossible
+  ? { results: [] as ProductCardRow[] }
+  : await db
+      .prepare(
+        `SELECT ${PRODUCT_CARD_SELECT}
+           ${from}
+          WHERE ${where.join(' AND ')}
+          ORDER BY ${orderBy}
+          LIMIT ?`,
+      )
+      .bind(...bindings, SHOP_PAGE_SIZE + 1)
+      .all<ProductCardRow>();
+
+logQueryCount('shop', count());
+
+const hasMore = rows.length > SHOP_PAGE_SIZE;
+const products = rows.slice(0, SHOP_PAGE_SIZE);
+const last = products.at(-1);
+const nextCursor =
+  hasMore && last
+    ? encodeCursor(
+        query.sort === 'new' ? { id: last.id } : { id: last.id, price: last.price },
+      )
+    : null;
+
+function shopHref(overrides: {
+  sort?: ShopSort;
+  category?: string | null;
+  cursor?: string | null;
+}): string {
+  const params = new URLSearchParams();
+  if (query.q) params.set('q', query.q);
+
+  const category =
+    overrides.category === undefined ? query.category : overrides.category;
+  if (category) params.set('category', category);
+
+  const sort = overrides.sort ?? query.sort;
+  if (sort !== 'new') params.set('sort', sort);
+  if (overrides.cursor) params.set('cursor', overrides.cursor);
+
+  const search = params.toString();
+  return `/shop${search ? `?${search}` : ''}`;
+}
+
+const topCategories = categories.filter((category) => category.parent_id === null);
+const filterCategories = topCategories.flatMap((category) => [
+  category,
+  ...categories.filter((child) => child.parent_id === category.id),
+]);
+
+const sortOptions: Array<{ value: ShopSort; label: string }> = [
+  { value: 'new', label: t(locale, 'storefront.sortNew') },
+  { value: 'price-asc', label: t(locale, 'storefront.sortPriceAsc') },
+  { value: 'price-desc', label: t(locale, 'storefront.sortPriceDesc') },
+];
+
+const resultCount =
+  locale === 'bn' && config.currency.bnDigits
+    ? toBanglaDigits(products.length)
+    : products.length;
+
+const heading = selectedCategory
+  ? pickLocalized(selectedCategory.name, selectedCategory.name_bn, locale)
+  : query.q
+    ? t(locale, 'storefront.searchResults', { query: query.q })
+    : t(locale, 'storefront.allProducts');
+
+const shopName = config.name[locale] || config.name.en;
+const publicUrl = env.R2_PUBLIC_URL ?? '';
+---
+
+<StorefrontLayout
+  title={`${heading} · ${shopName}`}
+  description={t(locale, 'storefront.allProducts')}
+  locale={locale}
+  config={config}
+>
+  <nav aria-label="Breadcrumb" class="text-muted mb-4 text-sm">
+    <a href="/" class="hover:text-[var(--color-primary)]">{t(locale, 'storefront.breadcrumbHome')}</a>
+    <span aria-hidden="true"> / </span>
+    <a href="/shop" class="hover:text-[var(--color-primary)]">{t(locale, 'storefront.breadcrumbShop')}</a>
+    {selectedCategory && (
+      <>
+        <span aria-hidden="true"> / </span>
+        <span>{pickLocalized(selectedCategory.name, selectedCategory.name_bn, locale)}</span>
+      </>
+    )}
+  </nav>
+
+  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold">{heading}</h1>
+      <p class="text-muted mt-1 text-sm">
+        {t(locale, 'storefront.results', { count: resultCount })}
+      </p>
+    </div>
+
+    <form action="/shop" method="get" role="search" class="flex gap-2">
+      {query.category && <input type="hidden" name="category" value={query.category} />}
+      {query.sort !== 'new' && <input type="hidden" name="sort" value={query.sort} />}
+      <input
+        type="search"
+        name="q"
+        value={query.q}
+        placeholder={t(locale, 'storefront.searchPlaceholder')}
+        class="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-1.5 text-sm"
+      />
+      <button type="submit" class="btn-primary px-3 py-1.5 text-sm">
+        {t(locale, 'common.search')}
+      </button>
+      {query.q && (
+        <a href={shopHref({ category: query.category })} class="self-center text-sm underline">
+          {t(locale, 'storefront.clearSearch')}
+        </a>
+      )}
+    </form>
+  </div>
+
+  <div class="mb-4 flex flex-wrap gap-2">
+    <a
+      href={shopHref({ category: null })}
+      class:list={[
+        'rounded-full border px-3 py-1 text-sm',
+        selectedCategory
+          ? 'border-[var(--color-border)] bg-[var(--color-surface)]'
+          : 'btn-primary border-transparent',
+      ]}
+    >
+      {t(locale, 'storefront.all')}
+    </a>
+    {filterCategories.map((category) => (
+      <a
+        href={shopHref({ category: category.slug })}
+        class:list={[
+          'rounded-full border px-3 py-1 text-sm',
+          selectedCategory?.id === category.id
+            ? 'btn-primary border-transparent'
+            : 'border-[var(--color-border)] bg-[var(--color-surface)]',
+        ]}
+      >
+        {category.parent_id === null ? '' : '↳ '}
+        {pickLocalized(category.name, category.name_bn, locale)}
+      </a>
+    ))}
+  </div>
+
+  <div class="mb-5 flex flex-wrap items-center gap-2 text-sm">
+    <span class="text-muted">{t(locale, 'storefront.sort')}:</span>
+    {sortOptions.map((option) => (
+      <a
+        href={shopHref({ sort: option.value })}
+        aria-current={query.sort === option.value ? 'true' : undefined}
+        class:list={[
+          'rounded-full px-3 py-1',
+          query.sort === option.value
+            ? 'bg-[var(--color-primary)] text-[var(--color-primary-contrast)]'
+            : 'text-[var(--color-muted)] hover:text-[var(--color-primary)]',
+        ]}
+      >
+        {option.label}
+      </a>
+    ))}
+  </div>
+
+  {products.length > 0 ? (
+    <>
+      <h2 class="sr-only">{t(locale, 'storefront.allProducts')}</h2>
+      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {products.map((product) => (
+          <ProductCard product={product} locale={locale} config={config} publicUrl={publicUrl} />
+        ))}
+      </div>
+
+      <nav class="mt-8 flex items-center justify-center gap-4 text-sm" aria-label="Pagination">
+        {query.cursor && (
+          <a href={shopHref({ cursor: null })} class="underline">
+            {t(locale, 'storefront.firstPage')}
+          </a>
+        )}
+        {nextCursor && (
+          <a href={shopHref({ cursor: nextCursor })} class="btn-primary px-4 py-2">
+            {t(locale, 'storefront.nextPage')}
+          </a>
+        )}
+      </nav>
+    </>
+  ) : (
+    <div class="card px-6 py-12 text-center">
+      <h2 class="text-lg font-semibold">{t(locale, 'storefront.emptyTitle')}</h2>
+      <p class="text-muted mt-2 text-sm">{t(locale, 'storefront.emptyText')}</p>
+      <a href="/shop" class="btn-primary mt-4 inline-block px-4 py-2 text-sm">
+        {t(locale, 'storefront.allProducts')}
+      </a>
+    </div>
+  )}
+</StorefrontLayout>

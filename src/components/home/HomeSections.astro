@@ -1,0 +1,204 @@
+---
+import ProductCard, { type ProductCardData } from '../ProductCard.astro';
+import type { SiteConfig } from '../../lib/config';
+import type { Locale } from '../../lib/i18n';
+import { t } from '../../lib/i18n';
+import { pickLocalized } from '../../lib/locale';
+import type { HomeSection, LocalizedText } from '../../lib/sections';
+
+interface CategoryItem {
+  id: number;
+  slug: string;
+  name: string;
+  name_bn: string | null;
+  image_key: string | null;
+}
+
+interface Props {
+  sections: HomeSection[];
+  config: SiteConfig;
+  locale: Locale;
+  categories: CategoryItem[];
+  featured: ProductCardData[];
+  newProducts: ProductCardData[];
+  publicUrl: string;
+}
+
+const { sections, config, locale, categories, featured, newProducts, publicUrl } = Astro.props;
+const shopName = config.name[locale] || config.name.en;
+const tagline = config.tagline[locale] || config.tagline.en;
+
+const localize = (value: LocalizedText | undefined) =>
+  value ? pickLocalized(value.en, value.bn, locale) : '';
+
+const defaultTrust = [
+  { title: t(locale, 'storefront.trustDelivery'), text: t(locale, 'storefront.trustDeliveryText') },
+  { title: t(locale, 'storefront.trustQuality'), text: t(locale, 'storefront.trustQualityText') },
+  { title: t(locale, 'storefront.trustSupport'), text: t(locale, 'storefront.trustSupportText') },
+];
+
+const grid = 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4';
+const heroIndex = sections.findIndex((section) => section.type === 'hero');
+const hasHero = heroIndex !== -1;
+---
+
+{!hasHero && <h1 class="sr-only">{shopName}</h1>}
+
+{
+  sections.map((section, index) => (
+    <Fragment>
+      {section.type === 'announcement' && (
+        <div class="badge-accent mb-5 rounded-[var(--radius)] px-4 py-2 text-center text-sm font-medium">
+          {localize(section.text) || tagline}
+        </div>
+      )}
+
+      {section.type === 'hero' && (
+        <section class="card mb-6 overflow-hidden border-0 bg-[var(--color-primary)] text-[var(--color-primary-contrast)]">
+          <div class="px-6 py-10 sm:px-10 sm:py-14">
+            {index === heroIndex ? (
+              <h1 class="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
+                {localize(section.title) || shopName}
+              </h1>
+            ) : (
+              <h2 class="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
+                {localize(section.title) || shopName}
+              </h2>
+            )}
+            <p class="mt-3 max-w-xl text-base opacity-90">
+              {localize(section.text) || tagline}
+            </p>
+            <a
+              href={section.href || '/shop'}
+              class="mt-6 inline-block rounded-[var(--radius)] bg-[var(--color-surface)] px-5 py-2.5 text-sm font-semibold text-[var(--color-primary)]"
+            >
+              {t(locale, 'storefront.shopNow')}
+            </a>
+          </div>
+        </section>
+      )}
+
+      {section.type === 'categories' && categories.length > 0 && (
+        <section class="mb-8">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold">
+              {localize(section.title) || t(locale, 'storefront.categories')}
+            </h2>
+            <a href="/shop" class="text-sm font-medium text-[var(--color-primary)]">
+              {t(locale, 'storefront.viewAll')}
+            </a>
+          </div>
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {categories.map((category) => (
+              <a
+                href={`/shop?category=${category.slug}`}
+                class="card px-3 py-4 text-center text-sm font-medium hover:border-[var(--color-primary)]"
+              >
+                {pickLocalized(category.name, category.name_bn, locale)}
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {(section.type === 'featured' || section.type === 'new') && (
+        <section class="mb-8">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold">
+              {localize(section.title) ||
+                t(
+                  locale,
+                  section.type === 'featured'
+                    ? 'storefront.featured'
+                    : 'storefront.newArrivals',
+                )}
+            </h2>
+            <a
+              href={section.type === 'featured' ? '/shop?sort=new' : '/shop'}
+              class="text-sm font-medium text-[var(--color-primary)]"
+            >
+              {t(locale, 'storefront.viewAll')}
+            </a>
+          </div>
+          <div class={grid}>
+            {(section.type === 'featured' ? featured : newProducts).map((product) => (
+              <ProductCard
+                product={product}
+                locale={locale}
+                config={config}
+                publicUrl={publicUrl}
+              />
+            ))}
+          </div>
+          {(section.type === 'featured' ? featured : newProducts).length === 0 && (
+            <p class="text-muted text-sm">{t(locale, 'storefront.noProducts')}</p>
+          )}
+        </section>
+      )}
+
+      {section.type === 'banner' && (
+        <section class="badge-accent mb-8 rounded-[var(--radius)] px-6 py-6 sm:flex sm:items-center sm:justify-between sm:gap-6">
+          <p class="text-base font-medium">{localize(section.text) || localize(section.title)}</p>
+          {section.href && (
+            <a
+              href={section.href}
+              class="mt-3 inline-block rounded-[var(--radius)] bg-[var(--color-surface)] px-4 py-2 text-sm font-semibold text-[var(--color-text)] sm:mt-0"
+            >
+              {t(locale, 'storefront.shopNow')}
+            </a>
+          )}
+        </section>
+      )}
+
+      {section.type === 'trust' && (
+        <section class="mb-8 grid gap-3 sm:grid-cols-3">
+          {(section.items?.length
+            ? section.items.map((item) => ({
+                title: localize(item.title),
+                text: localize(item.text),
+              }))
+            : defaultTrust
+          ).map((item) => (
+            <div class="card p-4">
+              <p class="font-semibold">{item.title}</p>
+              <p class="text-muted mt-1 text-sm">{item.text}</p>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {section.type === 'testimonials' && (section.items?.length ?? 0) > 0 && (
+        <section class="mb-8">
+          <h2 class="mb-3 text-xl font-semibold">
+            {localize(section.title) || t(locale, 'storefront.testimonials')}
+          </h2>
+          <div class="grid gap-3 sm:grid-cols-3">
+            {section.items?.map((item) => (
+              <blockquote class="card p-4 text-sm">
+                <p class="text-muted">{localize(item.text)}</p>
+                <footer class="mt-2 font-semibold">{localize(item.title)}</footer>
+              </blockquote>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {section.type === 'faq' && (section.items?.length ?? 0) > 0 && (
+        <section class="mb-8">
+          <h2 class="mb-3 text-xl font-semibold">
+            {localize(section.title) || t(locale, 'storefront.faq')}
+          </h2>
+          <div class="space-y-2">
+            {section.items?.map((item) => (
+              <details class="card px-4 py-3">
+                <summary class="cursor-pointer font-medium">{localize(item.title)}</summary>
+                <p class="text-muted mt-2 text-sm">{localize(item.text)}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
+
+    </Fragment>
+  ))
+}
