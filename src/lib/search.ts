@@ -26,6 +26,7 @@ export function ftsSkuText(rows: SkuRow[]): string {
 }
 
 interface SearchableRow {
+  slug: string;
   title: string;
   title_bn: string | null;
   description: string | null;
@@ -33,15 +34,16 @@ interface SearchableRow {
 }
 
 /**
- * Rebuilds the search row for one product. Inactive and missing products are
- * removed from the index, so draft/archived items never appear in search.
+ * Rebuilds the search row for one product. All statuses are indexed so the
+ * admin can search drafts and archived items; the storefront adds its own
+ * status filter. Missing products are removed.
  */
 export async function syncProductFts(db: D1Database, productId: number): Promise<void> {
   await db.prepare('DELETE FROM product_fts WHERE rowid = ?').bind(productId).run();
 
   const product = await db
     .prepare(
-      "SELECT title, title_bn, description, description_bn FROM products WHERE id = ? AND status = 'active'",
+      'SELECT slug, title, title_bn, description, description_bn FROM products WHERE id = ?',
     )
     .bind(productId)
     .first<SearchableRow>();
@@ -54,7 +56,7 @@ export async function syncProductFts(db: D1Database, productId: number): Promise
 
   await db
     .prepare(
-      'INSERT INTO product_fts (rowid, title, title_bn, description, description_bn, skus) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO product_fts (rowid, title, title_bn, description, description_bn, skus, slug) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
     .bind(
       productId,
@@ -63,6 +65,7 @@ export async function syncProductFts(db: D1Database, productId: number): Promise
       product.description ?? '',
       product.description_bn ?? '',
       ftsSkuText(results),
+      product.slug,
     )
     .run();
 }

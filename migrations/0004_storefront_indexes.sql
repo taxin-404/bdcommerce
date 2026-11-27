@@ -1,0 +1,2 @@
+CREATE INDEX `idx_products_status_price` ON `products` (`status`,`price`,"id" desc);--> statement-breakpoint
+CREATE INDEX `idx_products_status_cat_price` ON `products` (`status`,`category_id`,`price`,"id" desc);

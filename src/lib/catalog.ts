@@ -7,6 +7,7 @@ export interface ProductCardRow {
   compare_at_price: number | null;
   image_key: string | null;
   featured: number;
+  min_price: number | null;
 }
 
 export interface CategoryNavRow {
@@ -26,5 +27,10 @@ export const PRODUCT_CARD_SELECT = `
     WHERE i.product_id = p.id
     ORDER BY i.sort, i.id
     LIMIT 1
-  ) AS image_key
+  ) AS image_key,
+  (
+    SELECT MIN(COALESCE(v.price, p.price))
+    FROM variants v
+    WHERE v.product_id = p.id AND v.active = 1
+  ) AS min_price
 `;

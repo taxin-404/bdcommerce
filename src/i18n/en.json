@@ -169,6 +169,7 @@
     "searchResults": "Search results for “{query}”",
     "clearSearch": "Clear search",
     "price": "Price",
-    "quantity": "Quantity"
+    "quantity": "Quantity",
+    "from": "From"
   }
 }

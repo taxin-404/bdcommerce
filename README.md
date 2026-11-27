@@ -32,7 +32,8 @@ pnpm dev
 ```
 
 Open <http://localhost:4321>. Astro runs on Cloudflare's `workerd` runtime locally;
-D1 and R2 are emulated. The home page runs `SELECT 1` against the local D1 binding.
+D1 and R2 are emulated. The storefront renders from the seeded catalog, and demo
+products use `/placeholder.svg` until real images are uploaded in the admin.
 
 `pnpm db:seed` loads a demo catalog for three business types: clothing with
 size/colour variants, food with weight options, and electronics with spec

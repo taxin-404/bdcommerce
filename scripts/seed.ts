@@ -237,7 +237,7 @@ function buildSeedSql(timestamp: string): string {
       .map((variant) => variant.sku)
       .join(' ');
     statements.push(
-      `INSERT INTO product_fts (rowid, title, title_bn, description, description_bn, skus) VALUES (${product.id}, ${quote(product.title)}, ${quote(product.titleBn)}, ${quote(product.description)}, ${quote(product.descriptionBn)}, ${quote(skus)});`,
+      `INSERT INTO product_fts (rowid, title, title_bn, description, description_bn, skus, slug) VALUES (${product.id}, ${quote(product.title)}, ${quote(product.titleBn)}, ${quote(product.description)}, ${quote(product.descriptionBn)}, ${quote(skus)}, ${quote(product.slug)});`,
     );
   }
 

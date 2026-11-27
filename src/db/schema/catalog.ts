@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { desc, sql } from 'drizzle-orm';
 import {
   type AnySQLiteColumn,
   check,
@@ -48,6 +48,13 @@ export const products = sqliteTable(
     index('idx_products_status_id').on(table.status, table.id),
     index('idx_products_status_cat').on(table.status, table.categoryId, table.id),
     index('idx_products_featured').on(table.status, table.featured, table.id),
+    index('idx_products_status_price').on(table.status, table.price, desc(table.id)),
+    index('idx_products_status_cat_price').on(
+      table.status,
+      table.categoryId,
+      table.price,
+      desc(table.id),
+    ),
     check('products_status_check', sql`${table.status} in ('draft', 'active', 'archived')`),
   ],
 );

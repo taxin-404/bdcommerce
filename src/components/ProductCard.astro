@@ -15,6 +15,7 @@ export interface ProductCardData {
   compare_at_price: number | null;
   image_key: string | null;
   featured: number | boolean;
+  min_price: number | null;
 }
 
 interface Props {
@@ -29,8 +30,10 @@ const title = pickLocalized(product.title, product.title_bn, locale);
 const image = product.image_key
   ? imageUrl(product.image_key, 'thumb', publicUrl)
   : '/placeholder.svg';
+const displayPrice = product.min_price ?? product.price;
+const showFrom = product.min_price !== null && product.min_price !== product.price;
 const hasCompareAt =
-  product.compare_at_price !== null && product.compare_at_price > product.price;
+  product.compare_at_price !== null && product.compare_at_price > displayPrice;
 const money = (amount: number) =>
   formatBdt(amount, {
     locale,
@@ -64,7 +67,10 @@ const money = (amount: number) =>
     </h3>
 
     <p class="flex flex-wrap items-baseline gap-2">
-      <span class="font-semibold text-[var(--color-primary)]">{money(product.price)}</span>
+      {showFrom && (
+        <span class="text-muted text-xs">{t(locale, 'storefront.from')}</span>
+      )}
+      <span class="font-semibold text-[var(--color-primary)]">{money(displayPrice)}</span>
       {hasCompareAt && (
         <span class="text-muted text-xs line-through">{money(product.compare_at_price ?? 0)}</span>
       )}

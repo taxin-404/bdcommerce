@@ -169,6 +169,7 @@
     "searchResults": "“{query}” এর ফলাফল",
     "clearSearch": "খোঁজা মুছুন",
     "price": "দাম",
-    "quantity": "পরিমাণ"
+    "quantity": "পরিমাণ",
+    "from": "শুরু"
   }
 }

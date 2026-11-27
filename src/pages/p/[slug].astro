@@ -5,6 +5,7 @@ import { t } from '../../lib/i18n';
 import { imageUrl } from '../../lib/image';
 import { pickLocalized, resolveLocale } from '../../lib/locale';
 import { formatBdt, toBanglaDigits } from '../../lib/money';
+import { isProductInStock, pickDefaultVariant } from '../../lib/product';
 import { countCalls, logQueryCount } from '../../lib/query-log';
 import { buildProductJsonLd, serializeJsonLd } from '../../lib/structured-data';
 import { loadStorefront } from '../../lib/storefront';
@@ -116,30 +117,41 @@ if (product.attributes) {
   }
 }
 
+const stockTracked = product.track_stock === 1 && config.features.stockTracking;
+
 const variantsWithPrice = variants.map((variant) => {
   const price = variant.price ?? product.price;
+  const stockLabel = !stockTracked
+    ? t(locale, 'storefront.inStock')
+    : variant.stock <= 0
+      ? t(locale, 'storefront.outOfStock')
+      : variant.stock <= 5
+        ? t(locale, 'storefront.lowStock', {
+            count:
+              locale === 'bn' && config.currency.bnDigits
+                ? toBanglaDigits(variant.stock)
+                : variant.stock,
+          })
+        : t(locale, 'storefront.inStock');
+
   return {
     ...variant,
     price,
-    stockLabel:
-      variant.stock <= 0
-        ? t(locale, 'storefront.outOfStock')
+    stockLabel,
+    stockState: !stockTracked
+      ? 'in'
+      : variant.stock <= 0
+        ? 'out'
         : variant.stock <= 5
-          ? t(locale, 'storefront.lowStock', {
-              count:
-                locale === 'bn' && config.currency.bnDigits
-                  ? toBanglaDigits(variant.stock)
-                  : variant.stock,
-            })
-          : t(locale, 'storefront.inStock'),
-    stockState: variant.stock <= 0 ? 'out' : variant.stock <= 5 ? 'low' : 'in',
+          ? 'low'
+          : 'in',
   };
 });
 
-const defaultVariant =
-  variantsWithPrice.find((variant) => variant.stock > 0) ?? variantsWithPrice[0];
-const totalStock = variants.reduce((sum, variant) => sum + variant.stock, 0);
-const inStock = variants.length === 0 || totalStock > 0;
+const defaultVariant = pickDefaultVariant(variantsWithPrice);
+const inStock = isProductInStock({ trackStock: stockTracked, variants });
+const displayPrice = defaultVariant?.price ?? product.price;
+const displaySku = defaultVariant?.sku ?? `SKU-${product.id}`;
 
 const money = (amount: number) =>
   formatBdt(amount, {
@@ -167,9 +179,9 @@ const jsonLd = serializeJsonLd(
     description,
     url: canonical,
     images: jsonLdImages,
-    sku: variants[0]?.sku ?? `SKU-${product.id}`,
+    sku: displaySku,
     brand: config.name.en,
-    price: product.price,
+    price: displayPrice,
     currency: config.currency.code,
     inStock,
   }),
@@ -202,7 +214,13 @@ const shopName = config.name[locale] || config.name.en;
 
   <div class="grid gap-8 lg:grid-cols-2">
     <section aria-label={title}>
-      <a href={mainImageLarge} class="card block overflow-hidden" target="_blank" rel="noopener">
+      <a
+        id="product-image-link"
+        href={mainImageLarge}
+        class="card block overflow-hidden"
+        target="_blank"
+        rel="noopener"
+      >
         <img
           id="product-image"
           src={mainImage}
@@ -222,6 +240,7 @@ const shopName = config.name[locale] || config.name.en;
               type="button"
               class="thumb-option card overflow-hidden"
               data-src={imageUrl(image.r2_key, 'md', publicUrl)}
+              data-full={imageUrl(image.r2_key, 'full', publicUrl)}
               data-alt={image.alt || title}
               aria-label={image.alt || title}
             >
@@ -243,18 +262,26 @@ const shopName = config.name[locale] || config.name.en;
     <section>
       <h1 class="text-2xl font-semibold sm:text-3xl">{title}</h1>
 
-      <p class="mt-3 flex flex-wrap items-baseline gap-3">
+      <p class="mt-3 flex flex-wrap items-baseline gap-3" aria-live="polite">
         <span id="product-price" class="text-2xl font-bold text-[var(--color-primary)]">
-          {money(defaultVariant?.price ?? product.price)}
+          {money(displayPrice)}
         </span>
-        {product.compare_at_price !== null && product.compare_at_price > product.price && (
-          <span class="text-muted text-sm line-through">{money(product.compare_at_price)}</span>
+        {product.compare_at_price !== null && (
+          <span
+            id="product-compare"
+            class:list={[
+              'text-muted text-sm line-through',
+              product.compare_at_price <= displayPrice && 'hidden',
+            ]}
+          >
+            {money(product.compare_at_price)}
+          </span>
         )}
       </p>
 
       <p class="mt-2 text-sm">
         <span class="text-muted">{t(locale, 'storefront.sku')}:</span>
-        <span id="product-sku" class="font-mono">{defaultVariant?.sku ?? `SKU-${product.id}`}</span>
+        <span id="product-sku" class="font-mono">{displaySku}</span>
       </p>
 
       <p class="mt-2 text-sm">
@@ -288,9 +315,12 @@ const shopName = config.name[locale] || config.name.en;
                 aria-pressed={defaultVariant?.id === variant.id ? 'true' : 'false'}
                 data-variant-id={variant.id}
                 data-price-label={money(variant.price)}
+                data-price-value={variant.price}
+                data-compare-value={product.compare_at_price ?? ''}
                 data-stock-label={variant.stockLabel}
                 data-stock-state={variant.stockState}
                 data-sku={variant.sku ?? ''}
+                data-fallback-sku={`SKU-${product.id}`}
               >
                 {variant.title}
               </button>
@@ -331,6 +361,7 @@ const shopName = config.name[locale] || config.name.en;
 
 <script>
   const mainImage = document.getElementById('product-image') as HTMLImageElement | null;
+  const imageLink = document.getElementById('product-image-link') as HTMLAnchorElement | null;
 
   document.querySelectorAll<HTMLButtonElement>('.thumb-option').forEach((button) => {
     button.addEventListener('click', () => {
@@ -339,12 +370,14 @@ const shopName = config.name[locale] || config.name.en;
       const alt = button.dataset.alt;
       if (src) mainImage.src = src;
       if (alt) mainImage.alt = alt;
+      if (imageLink && button.dataset.full) imageLink.href = button.dataset.full;
     });
   });
 
   const price = document.getElementById('product-price');
   const stock = document.getElementById('product-stock');
   const sku = document.getElementById('product-sku');
+  const compare = document.getElementById('product-compare');
   const selected = document.getElementById('selected-variant') as HTMLInputElement | null;
   const options = document.querySelectorAll<HTMLButtonElement>('.variant-option');
 
@@ -358,7 +391,14 @@ const shopName = config.name[locale] || config.name.en;
         stock.textContent = button.dataset.stockLabel ?? stock.textContent;
         stock.dataset.state = button.dataset.stockState ?? 'in';
       }
-      if (sku) sku.textContent = button.dataset.sku || sku.textContent;
+      if (sku) {
+        sku.textContent = button.dataset.sku || button.dataset.fallbackSku || sku.textContent;
+      }
+      if (compare) {
+        const compareValue = Number(button.dataset.compareValue ?? 0);
+        const priceValue = Number(button.dataset.priceValue ?? 0);
+        compare.classList.toggle('hidden', !(compareValue > priceValue));
+      }
       if (selected) selected.value = button.dataset.variantId ?? selected.value;
     });
   });
