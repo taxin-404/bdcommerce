@@ -1,0 +1,26 @@
+{
+  "common": {
+    "home": "Home",
+    "shop": "Shop",
+    "cart": "Cart",
+    "checkout": "Checkout",
+    "search": "Search",
+    "save": "Save",
+    "cancel": "Cancel",
+    "retry": "Try again",
+    "loading": "Loading…",
+    "back": "Back",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "errors": {
+    "notFound": "Page not found",
+    "generic": "Something went wrong",
+    "network": "Network error",
+    "required": "{field} is required"
+  },
+  "health": {
+    "ok": "All good"
+  }
+}

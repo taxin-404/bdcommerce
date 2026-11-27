@@ -5,7 +5,7 @@
 A free-tier, config-driven e-commerce template for small Bangladeshi businesses.
 Built with Astro SSR, Hono, D1, and R2 on Cloudflare Workers.
 
-**Status:** Phase 0 — scaffold and infrastructure.
+**Status:** Phase 1 — database schema, config, and demo seed.
 
 ## One-click deploy
 
@@ -26,11 +26,18 @@ to this repository.
 
 ```bash
 pnpm install
+pnpm db:migrate:local
+pnpm db:seed
 pnpm dev
 ```
 
 Open <http://localhost:4321>. Astro runs on Cloudflare's `workerd` runtime locally;
 D1 and R2 are emulated. The home page runs `SELECT 1` against the local D1 binding.
+
+`pnpm db:seed` loads a demo catalog for three business types: clothing with
+size/colour variants, food with weight options, and electronics with spec
+attributes. It only targets local D1 and resets the demo catalog; orders,
+settings, coupons, and the blocklist are left untouched.
 
 Copy `.dev.vars.example` to `.dev.vars` when you need local secrets. Never commit
 `.dev.vars`.
@@ -48,6 +55,7 @@ Copy `.dev.vars.example` to `.dev.vars` when you need local secrets. Never commi
 | `pnpm db:generate` | Generate a D1 migration with Drizzle Kit |
 | `pnpm db:migrate:local` | Apply migrations to local D1 |
 | `pnpm db:migrate:remote` | Apply migrations to remote D1 |
+| `pnpm db:seed` | Load the local demo catalog (clothing, food, electronics) |
 | `pnpm run deploy` | Apply remote migrations, then deploy with Wrangler |
 
 ## CLI deployment
@@ -78,6 +86,13 @@ pnpm exec wrangler secret put ADMIN_PASSPHRASE
 
 The admin session signing key will be derived from the passphrase later, so there
 is no separate `SESSION_SECRET`.
+
+## Configuration
+
+Edit `site.config.ts` for the shop name, theme, delivery zones, payment numbers,
+social links, and feature flags. Runtime overrides live in the D1 `settings`
+table (JSON values keyed by config section) and are merged over these defaults by
+`loadConfig()`; the admin screens that write them arrive in later phases.
 
 ## Free-tier notes
 
