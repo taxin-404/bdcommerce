@@ -1,0 +1,60 @@
+---
+import { env } from 'cloudflare:workers';
+import StorefrontLayout from '../layouts/StorefrontLayout.astro';
+import CheckoutForm from '../components/cart/CheckoutForm';
+import { BD_GEO } from '../lib/geo';
+import { t } from '../lib/i18n';
+import { resolveLocale } from '../lib/locale';
+import { countRoundTrips, logQueryCount } from '../lib/query-log';
+import { loadConfig, loadConfigFromRows } from '../lib/config';
+import { readTurnstileConfig } from '../lib/turnstile';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+
+const { value: db, count } = countRoundTrips(env.DB);
+let config;
+try {
+  config = await loadConfig(db);
+} catch {
+  config = loadConfigFromRows([]);
+}
+const locale = resolveLocale(
+  config.locale.default,
+  config.locale.available,
+  requested,
+  Astro.cookies.get('locale')?.value,
+);
+logQueryCount('checkout-page', count());
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+const turnstile = readTurnstileConfig(env);
+const shopName = config.name[locale] || config.name.en;
+---
+
+<StorefrontLayout
+  title={`${t(locale, 'checkout.title')} · ${shopName}`}
+  description={t(locale, 'checkout.summary')}
+  locale={locale}
+  config={config}
+>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex" />
+  </Fragment>
+
+  <CheckoutForm
+    client:load
+    locale={locale}
+    symbol={config.currency.symbol}
+    bnDigits={config.currency.bnDigits}
+    geo={BD_GEO.divisions}
+    turnstileSiteKey={turnstile.enabled ? turnstile.siteKey : ''}
+    codEnabled={config.payments.cod.enabled}
+  />
+</StorefrontLayout>

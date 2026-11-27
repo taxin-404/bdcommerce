@@ -1,0 +1,192 @@
+---
+import { env } from 'cloudflare:workers';
+import StorefrontLayout from '../layouts/StorefrontLayout.astro';
+import { loadConfig, loadConfigFromRows } from '../lib/config';
+import { formatDhakaDateTime } from '../lib/datetime';
+import { t } from '../lib/i18n';
+import { resolveLocale } from '../lib/locale';
+import { formatBdt, toBanglaDigits } from '../lib/money';
+import { findOrderForCustomer } from '../lib/orders';
+import { normalizePhone } from '../lib/phone';
+import { countRoundTrips, logQueryCount } from '../lib/query-log';
+import { trackSchema } from '../lib/validation/checkout';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+
+const { value: db, count } = countRoundTrips(env.DB);
+let config;
+let unavailable = false;
+try {
+  config = await loadConfig(db);
+} catch {
+  config = loadConfigFromRows([]);
+  unavailable = true;
+}
+const locale = resolveLocale(
+  config.locale.default,
+  config.locale.available,
+  requested,
+  Astro.cookies.get('locale')?.value,
+);
+
+let orderNumber = '';
+let phone = '';
+let submitted = false;
+let result: Awaited<ReturnType<typeof findOrderForCustomer>> = null;
+
+if (!unavailable && Astro.request.method === 'POST') {
+  submitted = true;
+  try {
+    const data = await Astro.request.formData();
+    orderNumber = String(data.get('order_number') ?? '');
+    phone = String(data.get('phone') ?? '');
+  } catch {
+    orderNumber = '';
+    phone = '';
+  }
+
+  const parsed = trackSchema.safeParse({ order_number: orderNumber, phone });
+  const normalized = parsed.success ? normalizePhone(parsed.data.phone) : null;
+  if (parsed.success && normalized) {
+    try {
+      result = await findOrderForCustomer(db, parsed.data.order_number, normalized);
+    } catch {
+      unavailable = true;
+    }
+  }
+}
+
+logQueryCount('track', count());
+Astro.response.headers.set('Cache-Control', 'no-store');
+const shopName = config.name[locale] || config.name.en;
+const qtyLabel = (qty: number) =>
+  config.currency.bnDigits ? toBanglaDigits(qty) : String(qty);
+const money = (amount: number) =>
+  formatBdt(amount, {
+    locale,
+    symbol: config.currency.symbol,
+    bnDigits: config.currency.bnDigits,
+  });
+
+const statusKeys: Record<string, string> = {
+  pending: 'order.statusPending',
+  confirmed: 'order.statusConfirmed',
+  shipped: 'order.statusShipped',
+  delivered: 'order.statusDelivered',
+  cancelled: 'order.statusCancelled',
+  returned: 'order.statusReturned',
+};
+---
+
+<StorefrontLayout
+  title={`${t(locale, 'track.title')} · ${shopName}`}
+  description={t(locale, 'track.text')}
+  locale={locale}
+  config={config}
+>
+  <Fragment slot="head">
+    <meta name="robots" content="noindex" />
+    <meta name="referrer" content="no-referrer" />
+  </Fragment>
+
+  <div class="mx-auto max-w-2xl">
+    {unavailable ? (
+      <div class="card p-6 text-center">
+        <h1 class="text-xl font-semibold">{t(locale, 'errors.serviceUnavailable')}</h1>
+        <a href="/track" class="btn-primary mt-5 inline-block px-5 py-2 text-sm">
+          {t(locale, 'common.retry')}
+        </a>
+      </div>
+    ) : (
+      <>
+    <h1 class="text-2xl font-semibold">{t(locale, 'track.title')}</h1>
+    <p class="text-muted mt-1 text-sm">{t(locale, 'track.text')}</p>
+
+    <form method="post" class="card mt-4 grid gap-3 p-4 sm:grid-cols-[1fr_1fr_auto]">
+      <label class="text-sm" for="track-number">
+        <span class="mb-1 block font-medium">{t(locale, 'track.orderNumber')}</span>
+        <input
+          id="track-number"
+          name="order_number"
+          required
+          value={orderNumber}
+          autocomplete="off"
+          class="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 font-mono text-sm uppercase"
+        />
+      </label>
+      <label class="text-sm" for="track-phone">
+        <span class="mb-1 block font-medium">{t(locale, 'track.phone')}</span>
+        <input
+          id="track-phone"
+          name="phone"
+          type="tel"
+          inputmode="tel"
+          autocomplete="tel"
+          required
+          value={phone}
+          placeholder={t(locale, 'checkout.phoneHint')}
+          class="w-full rounded-[var(--radius)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+        />
+      </label>
+      <button type="submit" class="btn-primary self-end px-5 py-2 text-sm">
+        {t(locale, 'track.button')}
+      </button>
+    </form>
+
+    {submitted && !result && (
+      <p class="mt-4 text-sm" role="alert" style="color:#be123c">
+        {t(locale, 'track.notFound')}
+      </p>
+    )}
+
+    {result && (
+      <section class="card mt-4 p-5" aria-live="polite">
+        <p class="badge-accent inline-block rounded-full px-3 py-1 text-xs font-semibold">
+          {t(locale, 'track.found')}
+        </p>
+        <h2 class="mt-2 font-mono text-xl font-semibold">{result.order.number}</h2>
+        <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+          <span>
+            <span class="text-muted">{t(locale, 'order.status')}:</span>{' '}
+            {t(locale, statusKeys[result.order.status] ?? 'order.statusPending')}
+          </span>
+          <span>
+            <span class="text-muted">{t(locale, 'track.updated')}:</span>{' '}
+            {formatDhakaDateTime(result.order.updated_at, locale)}
+          </span>
+          <span>
+            <span class="text-muted">{t(locale, 'order.total')}:</span>{' '}
+            {money(result.order.total)}
+          </span>
+        </div>
+
+        <ul class="mt-4 divide-y divide-[var(--color-border)] text-sm">
+          {result.items.map((item) => (
+            <li class="flex justify-between gap-4 py-2">
+              <span>
+                {item.title_snapshot}
+                {item.variant_snapshot && (
+                  <span class="text-muted block text-xs">{item.variant_snapshot}</span>
+                )}
+              </span>
+              <span class="text-muted shrink-0">× {qtyLabel(item.qty)}</span>
+            </li>
+          ))}
+        </ul>
+
+        <a href={`/order/${result.order.number}`} class="mt-4 inline-block text-sm underline">
+          {t(locale, 'order.viewOrder')}
+        </a>
+      </section>
+    )}
+      </>
+    )}
+  </div>
+</StorefrontLayout>

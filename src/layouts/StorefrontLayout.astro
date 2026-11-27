@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import CartWidget from '../components/cart/CartWidget';
 import type { SiteConfig } from '../lib/config';
 import type { Locale } from '../lib/i18n';
 import { t } from '../lib/i18n';
@@ -72,6 +73,13 @@ const socials = [
             {t(locale, 'common.search')}
           </button>
         </form>
+
+        <CartWidget
+          client:idle
+          locale={locale}
+          symbol={config.currency.symbol}
+          bnDigits={config.currency.bnDigits}
+        />
 
         <a
           href={langUrl.pathname + langUrl.search}

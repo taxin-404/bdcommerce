@@ -38,6 +38,15 @@ describe('productInputSchema', () => {
     expect(() => productInputSchema.parse({ title: 'X', price: -1 })).toThrow();
   });
 
+  it('rejects prices above the safe business cap', () => {
+    expect(() =>
+      productInputSchema.parse({ title: 'X', price: 1_000_000_001 }),
+    ).toThrow();
+    expect(
+      productInputSchema.parse({ title: 'X', price: 1_000_000_000 }).price,
+    ).toBe(1_000_000_000);
+  });
+
   it('rejects an invalid status', () => {
     expect(() => productInputSchema.parse({ title: 'X', price: 1, status: 'live' })).toThrow();
   });

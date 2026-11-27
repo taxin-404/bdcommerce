@@ -57,12 +57,12 @@ const featuresSchema = z.object({
 const shippingZoneSchema = z.object({
   id: z.string().min(1),
   label: localizedTextSchema,
-  fee: z.number().int().nonnegative(),
+  fee: z.number().int().nonnegative().max(1_000_000_000),
 });
 
 const shippingSchema = z.object({
   zones: z.array(shippingZoneSchema).min(1),
-  freeShippingOver: z.number().int().nonnegative().nullable(),
+  freeShippingOver: z.number().int().nonnegative().max(1_000_000_000).nullable(),
 });
 
 const paymentMethodSchema = z.object({

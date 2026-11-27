@@ -26,7 +26,7 @@ const variantFieldsSchema = z.object({
   sku: z.string().trim().max(80).nullable().optional(),
   title: z.string().trim().min(1).max(160),
   options: z.record(z.string(), z.string()),
-  price: z.number().int().nonnegative().nullable().optional(),
+  price: z.number().int().nonnegative().max(1_000_000_000).nullable().optional(),
   stock: z.number().int().nonnegative(),
   active: z.boolean(),
 });
@@ -49,8 +49,14 @@ const productFieldsSchema = z.object({
   description: z.string().max(5000).nullable().optional(),
   description_bn: z.string().max(5000).nullable().optional(),
   category_id: z.number().int().positive().nullable().optional(),
-  price: z.number().int().nonnegative(),
-  compare_at_price: z.number().int().nonnegative().nullable().optional(),
+  price: z.number().int().nonnegative().max(1_000_000_000),
+  compare_at_price: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(1_000_000_000)
+    .nullable()
+    .optional(),
   status: z.enum(['draft', 'active', 'archived']),
   track_stock: z.boolean(),
   attributes: z.record(z.string(), z.string()),

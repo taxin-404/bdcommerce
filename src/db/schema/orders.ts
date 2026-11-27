@@ -37,6 +37,7 @@ export const orders = sqliteTable(
     trackingCode: text('tracking_code'),
     ipHash: text('ip_hash'),
     idempotencyKey: text('idempotency_key').unique(),
+    requestHash: text('request_hash'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },

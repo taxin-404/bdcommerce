@@ -1,0 +1,255 @@
+import { generateOrderNumber, type OrderSummaryRow } from './orders';
+import { errorMessage, isD1Unavailable } from './db-errors';
+
+export interface CheckoutCustomer {
+  name: string;
+  phone: string;
+  email: string | null;
+  division: string;
+  district: string;
+  upazila: string;
+  address: string;
+  note: string | null;
+}
+
+export interface CheckoutLineSnapshot {
+  product_id: number;
+  variant_id: number | null;
+  title: string;
+  variant_title: string | null;
+  variant_options: Record<string, string>;
+  unit_price: number;
+  qty: number;
+  line_total: number;
+  track_stock: boolean;
+}
+
+export type CheckoutFailure =
+  | { ok: false; code: 'out_of_stock' }
+  | { ok: false; code: 'idempotency_conflict' }
+  | { ok: false; code: 'db_unavailable' };
+
+export type CheckoutResult =
+  | { ok: true; order: OrderSummaryRow; existing: boolean }
+  | CheckoutFailure;
+
+function isDuplicateKeyError(message: string): boolean {
+  return /idempotency_key/i.test(message) && /UNIQUE|constraint/i.test(message);
+}
+
+function isGuardError(message: string): boolean {
+  return /checkout_guard/i.test(message) && /CHECK constraint failed/i.test(message);
+}
+
+function isNumberCollision(message: string): boolean {
+  return /UNIQUE constraint failed: orders\.number/i.test(message);
+}
+
+function variantSnapshot(line: CheckoutLineSnapshot): string | null {
+  if (!line.variant_title) return null;
+  const options = Object.entries(line.variant_options)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(', ');
+  return options ? `${line.variant_title} (${options})` : line.variant_title;
+}
+
+export async function createCheckoutOrder(input: {
+  db: D1Database;
+  idempotencyKey: string;
+  customer: CheckoutCustomer;
+  lines: CheckoutLineSnapshot[];
+  subtotal: number;
+  shippingFee: number;
+  total: number;
+  number: string;
+  requestHash: string;
+  now?: string;
+}): Promise<CheckoutResult> {
+  const { db, idempotencyKey, customer, lines } = input;
+  const now = input.now ?? new Date().toISOString();
+
+  const tracked = lines.filter(
+    (line): line is CheckoutLineSnapshot & { variant_id: number } =>
+      line.track_stock && line.variant_id !== null,
+  );
+
+  // One JSON parameter keeps the statement under D1's 100-bound-parameter
+  // limit even when the cart has the maximum number of lines.
+  const wanted = tracked.length
+    ? JSON.stringify(tracked.map((line) => ({ id: line.variant_id, qty: line.qty })))
+    : '';
+
+  const buildStatements = (orderNumber: string): D1PreparedStatement[] => {
+    const statements: D1PreparedStatement[] = [];
+
+    if (tracked.length) {
+      statements.push(
+        db
+          .prepare(
+            `WITH wanted(id, qty) AS (
+               SELECT CAST(json_extract(value, '$.id') AS INTEGER),
+                      CAST(json_extract(value, '$.qty') AS INTEGER)
+                 FROM json_each(?)
+             )
+             UPDATE variants
+                SET stock = stock - (SELECT qty FROM wanted w WHERE w.id = variants.id)
+              WHERE id IN (SELECT id FROM wanted)
+                AND stock >= (SELECT qty FROM wanted w WHERE w.id = variants.id)`,
+          )
+          .bind(wanted),
+      );
+
+      // Fails the CHECK (and therefore rolls back the batch) when any tracked
+      // line could not be decremented because its stock was too low.
+      statements.push(
+        db
+          .prepare('INSERT OR REPLACE INTO checkout_guard (id, ok) VALUES (1, changes() = ?)')
+          .bind(tracked.length),
+      );
+    }
+
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO orders (
+             number, status, customer_name, phone, email, division, district, upazila,
+             address, note, subtotal, discount, shipping_fee, total, coupon_code,
+             payment_method, payment_status, payment_trx_id, payment_sender, courier,
+             consignment_id, tracking_code, ip_hash, idempotency_key, request_hash,
+             created_at, updated_at
+           ) VALUES (
+             ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL,
+             'cod', 'unpaid', NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?
+           )`,
+        )
+        .bind(
+          orderNumber,
+          customer.name,
+          customer.phone,
+          customer.email,
+          customer.division,
+          customer.district,
+          customer.upazila,
+          customer.address,
+          customer.note,
+          input.subtotal,
+          input.shippingFee,
+          input.total,
+          idempotencyKey,
+          input.requestHash,
+          now,
+          now,
+        ),
+    );
+
+    for (const line of lines) {
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO order_items (
+               order_id, product_id, variant_id, title_snapshot, variant_snapshot,
+               unit_price, qty, line_total
+             )
+             SELECT o.id, ?, ?, ?, ?, ?, ?, ?
+               FROM orders o
+              WHERE o.number = ?`,
+          )
+          .bind(
+            line.product_id,
+            line.variant_id,
+            line.title,
+            variantSnapshot(line),
+            line.unit_price,
+            line.qty,
+            line.line_total,
+            orderNumber,
+          ),
+      );
+    }
+
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO order_events (order_id, type, message, created_at)
+           SELECT id, 'created', NULL, ?
+             FROM orders
+            WHERE number = ?`,
+        )
+        .bind(now, orderNumber),
+    );
+
+    return statements;
+  };
+
+  let orderNumber = input.number;
+  const maxAttempts = 4;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      await db.batch(buildStatements(orderNumber));
+    } catch (error) {
+      const message = errorMessage(error);
+
+      if (isNumberCollision(message)) {
+        if (attempt + 1 < maxAttempts) {
+          orderNumber = generateOrderNumber();
+          continue;
+        }
+        throw error;
+      }
+
+      if (isDuplicateKeyError(message)) {
+        const existing = await db
+          .prepare(
+            `SELECT id, number, status, phone, request_hash, subtotal, shipping_fee,
+                    total, payment_method, payment_status, created_at
+               FROM orders
+              WHERE idempotency_key = ?
+              LIMIT 1`,
+          )
+          .bind(idempotencyKey)
+          .first<OrderSummaryRow>();
+
+        if (
+          existing &&
+          existing.phone === customer.phone &&
+          (!existing.request_hash || existing.request_hash === input.requestHash)
+        ) {
+          return { ok: true, order: existing, existing: true };
+        }
+        if (existing) return { ok: false, code: 'idempotency_conflict' };
+        throw error;
+      }
+
+      if (isGuardError(message)) {
+        return { ok: false, code: 'out_of_stock' };
+      }
+
+      if (isD1Unavailable(error)) {
+        return { ok: false, code: 'db_unavailable' };
+      }
+
+      throw error;
+    }
+
+    return {
+      ok: true,
+      existing: false,
+      order: {
+        id: 0,
+        number: orderNumber,
+        status: 'pending',
+        phone: customer.phone,
+        request_hash: input.requestHash,
+        subtotal: input.subtotal,
+        shipping_fee: input.shippingFee,
+        total: input.total,
+        payment_method: 'cod',
+        payment_status: 'unpaid',
+        created_at: now,
+      },
+    };
+  }
+
+  throw new Error('Could not allocate an order number');
+}
