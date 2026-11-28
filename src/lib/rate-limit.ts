@@ -10,7 +10,17 @@ interface Bucket {
 
 const buckets = new Map<string, Bucket>();
 const MAX_BUCKETS = 2_000;
-const ISOLATE_SALT = crypto.randomUUID();
+
+/**
+ * Workers forbids random generation in global scope, so create the salt on the
+ * first request instead of at module evaluation time.
+ */
+let isolateSalt: string | null = null;
+
+function getIsolateSalt(): string {
+  if (isolateSalt === null) isolateSalt = crypto.randomUUID();
+  return isolateSalt;
+}
 
 function fnv1a(value: string): string {
   let hash = 0x811c9dc5;
@@ -23,7 +33,7 @@ function fnv1a(value: string): string {
 
 /** Map keys never contain a raw IP address. */
 export function rateLimitKey(scope: string, value: string): string {
-  return `${scope}:${fnv1a(`${ISOLATE_SALT}:${value}`)}`;
+  return `${scope}:${fnv1a(`${getIsolateSalt()}:${value}`)}`;
 }
 
 function prune(now: number): void {

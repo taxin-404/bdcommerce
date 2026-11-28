@@ -117,6 +117,12 @@ At the end of every phase, the agent appends its rulings here under a new headin
 - The phase-6 merge, phase-7 merge, and current main were checked in throwaway worktrees with fresh local D1 databases. All three accepted the Nagad case (PASS); no commit first fails for that input.
 - Regression tests: `tests/lib/settings-errors.test.ts` covers field-name formatting plus valid/invalid wallet, social, fee, image-address, one-zone, and old-homepage-section cases. No new dependencies.
 
+## Fix — Workers global-scope random generation (`fix-worker-global-scope`)
+- Deployed `/api/*` requests returned an empty 500. `wrangler tail bdcommerce-test` showed: “Disallowed operation called within global scope … generating random values are not allowed within global scope”, pointing at `rate-limit.ts`.
+- Cause: `const ISOLATE_SALT = crypto.randomUUID()` ran while the API module was evaluated. Miniflare allowed it locally; production Workers rejects it, so every API route failed before Hono.
+- Fix: the per-isolate salt is now created lazily on the first `rateLimitKey()` call inside a request handler. The salt remains stable for the isolate. A regression test reads `src/lib/rate-limit.ts` and fails if random generation returns to module scope.
+- The deployed `bdcommerce-test` Worker was redeployed from this branch after `pnpm typecheck && pnpm test && pnpm build`; no D1 migration was needed.
+
 ## Phase 1–2
 
 ### Phase 1 — schema, config, seed

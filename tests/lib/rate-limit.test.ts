@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { hitRateLimit, rateLimitKey, resetRateLimits } from '../../src/lib/rate-limit';
 
@@ -24,6 +25,15 @@ describe('hitRateLimit', () => {
     const key = rateLimitKey('coupon-check', '203.0.113.99');
     expect(key.startsWith('coupon-check:')).toBe(true);
     expect(key).not.toContain('203.0.113.99');
+  });
+
+  it('uses one stable salt for the isolate', () => {
+    expect(rateLimitKey('test', 'x')).toBe(rateLimitKey('test', 'x'));
+  });
+
+  it('does not generate random values at module scope (Workers global-scope rule)', () => {
+    const source = readFileSync('src/lib/rate-limit.ts', 'utf8');
+    expect(source).not.toMatch(/^const\s+\w+\s*=\s*crypto\.(randomUUID|getRandomValues)/m);
   });
 
   it('disables the limiter when the limit is zero', () => {
