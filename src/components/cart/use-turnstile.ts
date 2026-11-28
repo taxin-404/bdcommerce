@@ -55,17 +55,27 @@ export function loadTurnstileScript(): Promise<void> {
   return scriptPromise;
 }
 
+export type TurnstileStatus = 'idle' | 'loading' | 'ready' | 'error';
+
 export function useTurnstile(siteKey: string, active = true) {
   const [token, setToken] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
+  const [status, setStatus] = useState<TurnstileStatus>(
+    active && siteKey ? 'loading' : 'idle',
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!active || !siteKey || !containerRef.current) return;
+    if (!active || !siteKey || !containerRef.current) {
+      setStatus('idle');
+      return;
+    }
 
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let renderTimer: ReturnType<typeof setTimeout> | undefined;
+    setStatus('loading');
 
     loadTurnstileScript()
       .then(() => {
@@ -73,21 +83,41 @@ export function useTurnstile(siteKey: string, active = true) {
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
           theme: 'auto',
-          callback: (value) => setToken(value),
+          callback: (value) => {
+            if (renderTimer) clearTimeout(renderTimer);
+            setToken(value);
+            setStatus('ready');
+          },
           'expired-callback': () => setToken(null),
-          'error-callback': () => setToken(null),
+          'error-callback': () => {
+            if (renderTimer) clearTimeout(renderTimer);
+            setToken(null);
+            setStatus('error');
+          },
         });
+        // A widget that renders but never calls back must not leave checkout
+        // stuck on "loading" with no retry path.
+        renderTimer = setTimeout(() => {
+          if (!cancelled) {
+            setToken(null);
+            setStatus('error');
+          }
+        }, 15_000);
+        setStatus('ready');
       })
       .catch(() => {
         setToken(null);
         if (!cancelled && retryTick < 2) {
           retryTimer = setTimeout(() => setRetryTick((value) => value + 1), 2500);
+        } else if (!cancelled) {
+          setStatus('error');
         }
       });
 
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
+      if (renderTimer) clearTimeout(renderTimer);
       if (widgetIdRef.current && window.turnstile) {
         window.turnstile.remove(widgetIdRef.current);
       }
@@ -102,5 +132,11 @@ export function useTurnstile(siteKey: string, active = true) {
     }
   };
 
-  return { token, containerRef, reset };
+  const retry = () => {
+    setToken(null);
+    setStatus('loading');
+    setRetryTick((value) => value + 1);
+  };
+
+  return { token, containerRef, reset, status, retry };
 }

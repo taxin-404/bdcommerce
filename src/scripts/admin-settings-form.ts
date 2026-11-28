@@ -8,6 +8,13 @@
   const logoButton = document.getElementById('logo-upload') as HTMLButtonElement | null;
   const logoStatus = document.getElementById('logo-status');
   const themeJson = document.getElementById('theme-json')?.textContent ?? '{}';
+  const zoneList = document.getElementById('zone-list');
+  const zoneAdd = document.getElementById('zone-add') as HTMLButtonElement | null;
+  const fallbackSelect = document.getElementById('fallback-zone') as HTMLSelectElement | null;
+  const imageAddressTest = document.getElementById(
+    'image-address-test',
+  ) as HTMLButtonElement | null;
+  const imageAddressStatus = document.getElementById('image-address-status');
 
   function showStatus(message: string, error = false) {
     if (!status) return;
@@ -43,6 +50,213 @@
       logoButton.disabled = false;
     }
   });
+
+  function zoneRows(): HTMLElement[] {
+    return Array.from(zoneList?.querySelectorAll<HTMLElement>('[data-zone-id]') ?? []);
+  }
+
+  function zoneIdOf(row: HTMLElement): string {
+    return row.dataset.zoneId ?? '';
+  }
+
+  function zoneLabelOf(row: HTMLElement): string {
+    const locale = document.documentElement.lang === 'bn' ? 'bn' : 'en';
+    return (
+      row.querySelector<HTMLInputElement>(`.js-zone-label-${locale}`)?.value.trim() ||
+      row.querySelector<HTMLInputElement>('.js-zone-label-en')?.value.trim() ||
+      zoneIdOf(row)
+    );
+  }
+
+  function refreshZoneButtons(): void {
+    const rows = zoneRows();
+    for (const row of rows) {
+      const button = row.querySelector<HTMLButtonElement>('.js-zone-remove');
+      if (button) button.disabled = rows.length <= 1;
+    }
+  }
+
+  function rebuildZoneOptions(): void {
+    const rows = zoneRows();
+    const ids = rows.map(zoneIdOf);
+    const fallback = fallbackSelect?.value;
+    const nextFallback = fallback && ids.includes(fallback) ? fallback : ids[0] ?? '';
+
+    if (fallbackSelect) {
+      const previous = fallbackSelect.value;
+      fallbackSelect.innerHTML = '';
+      for (const row of rows) {
+        const option = document.createElement('option');
+        option.value = zoneIdOf(row);
+        option.textContent = zoneLabelOf(row);
+        fallbackSelect.appendChild(option);
+      }
+      fallbackSelect.value = nextFallback;
+      if (previous && previous !== nextFallback) {
+        for (const select of Array.from(form?.querySelectorAll<HTMLElement>('.js-district-zone') ?? []) as unknown as HTMLSelectElement[]) {
+          if (select.value === previous) select.value = nextFallback;
+        }
+      }
+    }
+
+    for (const select of Array.from(form?.querySelectorAll<HTMLElement>('.js-district-zone') ?? []) as unknown as HTMLSelectElement[]) {
+      const current = select.value;
+      select.innerHTML = '';
+      for (const row of rows) {
+        const option = document.createElement('option');
+        option.value = zoneIdOf(row);
+        option.textContent = zoneLabelOf(row);
+        select.appendChild(option);
+      }
+      select.value = ids.includes(current) ? current : nextFallback;
+    }
+    refreshZoneButtons();
+  }
+
+  zoneAdd?.addEventListener('click', () => {
+    if (!zoneList) return;
+    const used = new Set(zoneRows().map(zoneIdOf));
+    let suffix = zoneRows().length + 1;
+    let id = `zone-${suffix}`;
+    while (used.has(id)) {
+      suffix += 1;
+      id = `zone-${suffix}`;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'grid gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-4';
+    row.dataset.zoneId = id;
+    row.innerHTML =
+      '<label class="text-sm"><span class="mb-1 block font-medium"></span><input class="w-full rounded border border-slate-300 px-3 py-2 text-sm js-zone-label-en" /></label>' +
+      '<label class="text-sm"><span class="mb-1 block font-medium"></span><input class="w-full rounded border border-slate-300 px-3 py-2 text-sm js-zone-label-bn" /></label>' +
+      '<label class="text-sm"><span class="mb-1 block font-medium"></span><input class="w-full rounded border border-slate-300 px-3 py-2 text-sm js-zone-fee" type="number" min="0" value="0" /></label>' +
+      '<div class="flex items-end"><button type="button" class="js-zone-remove rounded border border-rose-300 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"></button></div>';
+
+    const labels = row.querySelectorAll('span');
+    if (labels[0]) labels[0].textContent = form?.dataset.zoneLabelEn ?? '';
+    if (labels[1]) labels[1].textContent = form?.dataset.zoneLabelBn ?? '';
+    if (labels[2]) labels[2].textContent = form?.dataset.zoneFee ?? '';
+    const remove = row.querySelector<HTMLButtonElement>('.js-zone-remove');
+    if (remove) remove.textContent = form?.dataset.removeZone ?? '';
+    zoneList.appendChild(row);
+    rebuildZoneOptions();
+  });
+
+  zoneList?.addEventListener('input', (event) => {
+    const target = event.target as HTMLElement;
+    if (
+      target.classList.contains('js-zone-label-en') ||
+      target.classList.contains('js-zone-label-bn')
+    ) {
+      rebuildZoneOptions();
+    }
+  });
+
+  zoneList?.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement;
+    if (!target.classList.contains('js-zone-remove')) return;
+    if (zoneRows().length <= 1) return;
+    target.closest('[data-zone-id]')?.remove();
+    rebuildZoneOptions();
+  });
+
+  fallbackSelect?.addEventListener('change', () => {
+    const next = fallbackSelect.value;
+    for (const select of Array.from(form?.querySelectorAll<HTMLElement>('.js-district-zone') ?? []) as unknown as HTMLSelectElement[]) {
+      if (!select.value) select.value = next;
+    }
+  });
+
+  rebuildZoneOptions();
+
+  imageAddressTest?.addEventListener('click', () => {
+    if (!imageAddressStatus) return;
+    const key = imageAddressTest.dataset.testKey ?? '';
+    if (!key) {
+      imageAddressStatus.textContent = imageAddressTest.dataset.noImage ?? '';
+      imageAddressStatus.className = 'mt-2 text-sm text-amber-700';
+      imageAddressStatus.classList.remove('hidden');
+      return;
+    }
+    const address = value('image_address');
+    if (!address) {
+      imageAddressStatus.textContent = imageAddressTest.dataset.empty ?? '';
+      imageAddressStatus.className = 'mt-2 text-sm text-amber-700';
+      imageAddressStatus.classList.remove('hidden');
+      return;
+    }
+
+    imageAddressTest.disabled = true;
+    imageAddressStatus.textContent = imageAddressTest.dataset.testing ?? '';
+    imageAddressStatus.className = 'mt-2 text-sm text-slate-600';
+    imageAddressStatus.classList.remove('hidden');
+
+    const probe = new Image();
+    const finish = (ok: boolean) => {
+      clearTimeout(timer);
+      imageAddressStatus.textContent = ok
+        ? (imageAddressTest.dataset.ok ?? '')
+        : (imageAddressTest.dataset.failed ?? '');
+      imageAddressStatus.className = ok
+        ? 'mt-2 text-sm text-emerald-700'
+        : 'mt-2 text-sm text-rose-700';
+      imageAddressTest.disabled = false;
+    };
+    // A blocked/hanging host must never leave the button disabled forever.
+    const timer = setTimeout(() => finish(false), 8000);
+    probe.onload = () => finish(true);
+    probe.onerror = () => finish(false);
+    probe.src = `${address}/${key}`;
+  });
+
+  for (const button of form?.querySelectorAll<HTMLButtonElement>('.js-wallet-qr-upload') ?? []) {
+    button.addEventListener('click', async () => {
+      const container = button.closest<HTMLElement>('[data-wallet]');
+      const wallet = container?.dataset.wallet ?? '';
+      const file = container?.querySelector<HTMLInputElement>('.js-wallet-qr-file')?.files?.[0];
+      const status = container?.querySelector<HTMLElement>('.js-wallet-qr-status');
+      if (!file || !status) return;
+
+      button.disabled = true;
+      status.textContent = button.dataset.uploading ?? '';
+      status.className = 'js-wallet-qr-status mt-1 text-xs text-slate-600';
+
+      try {
+        const data = new FormData();
+        data.set('wallet', wallet);
+        data.set('qr', file);
+        const response = await fetch('/api/admin/settings/qr', {
+          method: 'POST',
+          credentials: 'same-origin',
+          body: data,
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          ok?: boolean;
+          data?: { url: string };
+          error?: { code?: string };
+        } | null;
+        if (!response.ok || !payload?.ok || !payload.data) {
+          throw new Error(payload?.error?.code ?? 'upload_failed');
+        }
+        const input = container?.querySelector<HTMLInputElement>('.js-wallet-qr-value');
+        if (input) input.value = payload.data.url;
+        const testKey = payload.data.url.match(
+          /payment-qr\/[A-Za-z0-9_-]+\.(?:png|jpg|jpeg|webp)/,
+        )?.[0];
+        if (testKey && imageAddressTest) {
+          imageAddressTest.dataset.testKey = testKey;
+          imageAddressTest.disabled = false;
+        }
+        status.textContent = payload.data.url;
+        status.className = 'js-wallet-qr-status mt-1 text-xs text-emerald-700';
+      } catch {
+        status.textContent = button.dataset.failed ?? '';
+        status.className = 'js-wallet-qr-status mt-1 text-xs text-rose-700';
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
 
   const list = document.getElementById('section-list');
   const addSelect = document.getElementById('section-add') as HTMLSelectElement | null;
@@ -106,14 +320,20 @@
     const preset = (document.getElementById('theme-preset') as HTMLSelectElement | null)?.value;
     if (preset) theme.preset = preset;
 
-    const zones = Array.from(form.querySelectorAll<HTMLElement>('[data-zone-id]')).map((zone) => ({
-      id: zone.dataset.zoneId ?? '',
+    const zones = zoneRows().map((zone) => ({
+      id: zoneIdOf(zone),
       label: {
         en: zone.querySelector<HTMLInputElement>('.js-zone-label-en')?.value.trim() ?? '',
         bn: zone.querySelector<HTMLInputElement>('.js-zone-label-bn')?.value.trim() ?? '',
       },
       fee: Number(zone.querySelector<HTMLInputElement>('.js-zone-fee')?.value ?? 0),
     }));
+
+    const districtZones: Record<string, string> = {};
+    for (const select of Array.from(form.querySelectorAll<HTMLElement>('.js-district-zone')) as unknown as HTMLSelectElement[]) {
+      const district = select.dataset.district;
+      if (district) districtZones[district] = select.value;
+    }
 
     const freeShipping = value('free_shipping_over');
     const wallet = (name: 'bkash' | 'nagad') => {
@@ -122,6 +342,7 @@
         enabled: container?.querySelector<HTMLInputElement>('.js-wallet-enabled')?.checked ?? false,
         number: container?.querySelector<HTMLInputElement>('.js-wallet-number')?.value.trim() ?? '',
         type: (container?.querySelector('.js-wallet-type') as HTMLSelectElement | null)?.value ?? 'personal',
+        qr: container?.querySelector<HTMLInputElement>('.js-wallet-qr-value')?.value.trim() ?? '',
       };
     };
 
@@ -147,7 +368,13 @@
       theme,
       shipping: {
         zones,
+        districtZones,
+        fallbackZone: fallbackSelect?.value ?? zones[0]?.id ?? '',
         freeShippingOver: freeShipping ? Number(freeShipping) : null,
+      },
+      images: { address: value('image_address') },
+      inventory: {
+        lowStockThreshold: Number(value('low_stock_threshold')) || 5,
       },
       payments: {
         cod: {

@@ -1,10 +1,10 @@
 import { zValidator } from '@hono/zod-validator';
 import type { BatchItem } from 'drizzle-orm/batch';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { getDb } from '../../db/client';
-import { productImages, products, variants } from '../../db/schema';
+import { orderTransitionGuard, productImages, products, variants } from '../../db/schema';
 import { imageVariantKey } from '../../lib/image';
 import { deleteProductFts, syncProductFts } from '../../lib/search';
 import { buildFtsQuery } from '../../lib/search';
@@ -148,6 +148,42 @@ function duplicateSkuResponse(sku: string) {
       message: `SKU "${sku}" is already used by another variant`,
     },
   };
+}
+
+const ACTIVE_ORDER_STATUSES = "('pending', 'confirmed', 'shipped')";
+
+async function productInActiveOrders(db: D1Database, productId: number): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 AS found
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+        WHERE oi.product_id = ?
+          AND o.status IN ${ACTIVE_ORDER_STATUSES}
+        LIMIT 1`,
+    )
+    .bind(productId)
+    .first<{ found: number }>();
+  return Boolean(row);
+}
+
+async function variantsInActiveOrders(
+  db: D1Database,
+  variantIds: number[],
+): Promise<number[]> {
+  if (!variantIds.length) return [];
+  const placeholders = variantIds.map(() => '?').join(', ');
+  const { results } = await db
+    .prepare(
+      `SELECT oi.variant_id
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+        WHERE oi.variant_id IN (${placeholders})
+          AND o.status IN ${ACTIVE_ORDER_STATUSES}`,
+    )
+    .bind(...variantIds)
+    .all<{ variant_id: number }>();
+  return [...new Set(results.map((row) => row.variant_id))];
 }
 
 async function loadProduct(db: ReturnType<typeof getDb>, id: number) {
@@ -365,6 +401,27 @@ adminProductRoutes.patch(
         input.variants.flatMap((variant) => (variant.id === undefined ? [] : [variant.id])),
       );
       removed = current.filter((variant) => !keptIds.has(variant.id));
+
+      const blocked = await variantsInActiveOrders(
+        c.env.DB,
+        removed.map((variant) => variant.id),
+      );
+      if (blocked.length) {
+        const titles = removed
+          .filter((variant) => blocked.includes(variant.id))
+          .map((variant) => variant.title)
+          .join(', ');
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'variant_in_active_orders',
+              message: `Cannot delete variants in pending, confirmed, or shipped orders: ${titles}. Deactivate them instead.`,
+            },
+          },
+          409,
+        );
+      }
     }
 
     const slug =
@@ -422,12 +479,63 @@ adminProductRoutes.patch(
         }
       }
 
-      for (const variant of removed) {
-        statements.push(db.delete(variants).where(eq(variants.id, variant.id)));
+      if (removed.length) {
+        // A single conditional delete plus the one-row guard makes this
+        // race-safe: a checkout that inserts an active-order line after the
+        // pre-check makes the guard fail and rolls back the whole batch.
+        statements.push(
+          db
+            .delete(variants)
+            .where(
+              and(
+                inArray(
+                  variants.id,
+                  removed.map((variant) => variant.id),
+                ),
+                sql`NOT EXISTS (
+                  SELECT 1
+                    FROM order_items oi
+                    JOIN orders o ON o.id = oi.order_id
+                   WHERE oi.variant_id = variants.id
+                     AND o.status IN ('pending', 'confirmed', 'shipped')
+                )`,
+              ),
+            ),
+        );
+        statements.push(
+          db
+            .insert(orderTransitionGuard)
+            .values({
+              id: 1,
+              ok: sql`changes() = ${removed.length}` as unknown as number,
+            })
+            .onConflictDoUpdate({
+              target: orderTransitionGuard.id,
+              set: { ok: sql`changes() = ${removed.length}` as unknown as number },
+            }),
+        );
       }
     }
 
-    await db.batch(statements as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]);
+    try {
+      await db.batch(statements as [BatchItem<'sqlite'>, ...BatchItem<'sqlite'>[]]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/order_transition_guard/i.test(message) && /CHECK constraint failed/i.test(message)) {
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'variant_in_active_orders',
+              message:
+                'A variant is in a pending, confirmed, or shipped order. Deactivate it instead of deleting it.',
+            },
+          },
+          409,
+        );
+      }
+      throw error;
+    }
     await syncProductFts(c.env.DB, id);
 
     const product = await loadProduct(db, id);
@@ -450,6 +558,20 @@ adminProductRoutes.delete(
       );
     }
 
+    if (await productInActiveOrders(c.env.DB, id)) {
+      return c.json(
+        {
+          ok: false,
+          error: {
+            code: 'product_in_active_orders',
+            message:
+              'This product is in a pending, confirmed, or shipped order. Archive or deactivate it instead of deleting it.',
+          },
+        },
+        409,
+      );
+    }
+
     const imageRows = await db
       .select({ r2Key: productImages.r2Key })
       .from(productImages)
@@ -460,10 +582,39 @@ adminProductRoutes.delete(
       imageVariantKey(image.r2Key, 'md'),
       imageVariantKey(image.r2Key, 'full'),
     ]);
-    if (keys.length) await c.env.IMAGES.delete(keys);
+
+    // Conditional delete is the race-safe backstop for the pre-check above:
+    // a checkout that inserted an active-order line in between makes it a no-op.
+    const deletion = await c.env.DB.prepare(
+      `DELETE FROM products
+        WHERE id = ?
+          AND NOT EXISTS (
+            SELECT 1
+              FROM order_items oi
+              JOIN orders o ON o.id = oi.order_id
+             WHERE oi.product_id = products.id
+               AND o.status IN ${ACTIVE_ORDER_STATUSES}
+          )`,
+    )
+      .bind(id)
+      .run();
+
+    if (!deletion.meta.changes) {
+      return c.json(
+        {
+          ok: false,
+          error: {
+            code: 'product_in_active_orders',
+            message:
+              'This product is in a pending, confirmed, or shipped order. Archive or deactivate it instead of deleting it.',
+          },
+        },
+        409,
+      );
+    }
 
     await deleteProductFts(c.env.DB, id);
-    await db.delete(products).where(eq(products.id, id));
+    if (keys.length) await c.env.IMAGES.delete(keys);
 
     return c.json({ ok: true, data: null });
   },

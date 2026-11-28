@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import type { AdminLocale } from '../lib/admin-locale';
 import { loadConfig } from '../lib/config';
 import { t } from '../lib/i18n';
-import { imageUrl } from '../lib/image';
+import { imageUrl, resolveImageBase } from '../lib/image';
 
 interface VariantData {
   id: number;
@@ -47,8 +47,8 @@ interface Props {
 }
 
 const { locale, product, categories } = Astro.props;
-const publicUrl = env.R2_PUBLIC_URL ?? '';
 const config = await loadConfig(env.DB);
+const publicUrl = resolveImageBase(config.images.address, env.R2_PUBLIC_URL);
 const currencySymbol = config.currency.symbol;
 
 function optionsToText(options: Record<string, string>): string {

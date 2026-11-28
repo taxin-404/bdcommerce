@@ -88,6 +88,65 @@ describe('Phase 6 admin APIs', () => {
     expect(payload.data.config.theme.primary).toBe(defaultConfig.theme.primary);
   });
 
+  it('saves the image address, zone mapping, and low-stock threshold', async () => {
+    environment = createTestDb();
+    const response = await app.request(
+      '/api/admin/settings',
+      {
+        method: 'PUT',
+        headers: await authHeaders(),
+        body: JSON.stringify({
+          images: { address: 'https://images.example.com' },
+          inventory: { lowStockThreshold: 3 },
+          shipping: {
+            zones: defaultConfig.shipping.zones,
+            districtZones: { Dhaka: 'dhaka', Cumilla: 'dhaka' },
+            fallbackZone: 'outside',
+            freeShippingOver: null,
+          },
+        }),
+      },
+      env(),
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      ok: boolean;
+      data: {
+        config: {
+          images: { address: string };
+          inventory: { lowStockThreshold: number };
+          shipping: { districtZones: Record<string, string>; fallbackZone: string };
+        };
+      };
+    };
+    expect(payload.data.config.images.address).toBe('https://images.example.com');
+    expect(payload.data.config.inventory.lowStockThreshold).toBe(3);
+    expect(payload.data.config.shipping.districtZones.Cumilla).toBe('dhaka');
+    expect(payload.data.config.shipping.fallbackZone).toBe('outside');
+  });
+
+  it('rejects an insecure or local image address', async () => {
+    environment = createTestDb();
+    for (const address of [
+      'http://images.example.com',
+      'https://localhost',
+      'https://192.168.0.2',
+      'https://images.example.com/',
+    ]) {
+      const response = await app.request(
+        '/api/admin/settings',
+        {
+          method: 'PUT',
+          headers: await authHeaders(),
+          body: JSON.stringify({ images: { address } }),
+        },
+        env(),
+      );
+      expect(response.status, address).toBe(400);
+    }
+  });
+
   it('applies a preset through the admin action', async () => {
     environment = createTestDb();
     const response = await app.request(

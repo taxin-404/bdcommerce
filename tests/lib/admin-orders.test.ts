@@ -206,6 +206,7 @@ describe('dashboard', () => {
     insertOrder(sqlite, {
       number: 'BDTODAY2',
       status: 'delivered',
+      paymentStatus: 'paid',
       total: 1000,
       createdAt: '2026-11-27T11:00:00.000Z',
     });
@@ -239,9 +240,26 @@ describe('dashboard', () => {
     expect(dashboard.todayOrders).toBe(4);
     expect(dashboard.pendingOrders).toBe(2);
     expect(dashboard.weekRevenue).toBe(1800);
+    expect(dashboard.weekCashCollected).toBe(1000);
     expect(dashboard.lowStockCount).toBe(1);
     expect(dashboard.lowStock.map((row) => row.id)).toEqual([11]);
     expect(adapter.roundTrips).toBe(1);
+  });
+
+  it('uses the configurable low-stock threshold', async () => {
+    const { db, sqlite } = createTestDb();
+    insertProduct(sqlite, {
+      id: 1,
+      title: 'Low stock product',
+      price: 100,
+      trackStock: true,
+      variants: [{ id: 11, stock: 2 }],
+    });
+
+    const atTwo = await loadAdminDashboard(db, new Date('2026-11-27T10:00:00.000Z'), 2);
+    expect(atTwo.lowStockCount).toBe(1);
+    const atOne = await loadAdminDashboard(db, new Date('2026-11-27T10:00:00.000Z'), 1);
+    expect(atOne.lowStockCount).toBe(0);
   });
 
   it('uses indexed queries with no scans', () => {

@@ -11,9 +11,11 @@ export interface FallbackLinks {
 interface Props {
   locale: Locale;
   fallback: FallbackLinks;
+  heading?: string;
+  text?: string;
 }
 
-export default function CheckoutFallback({ locale, fallback }: Props) {
+export default function CheckoutFallback({ locale, fallback, heading, text }: Props) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -31,11 +33,15 @@ export default function CheckoutFallback({ locale, fallback }: Props) {
       style="border-color:var(--color-accent)"
       aria-live="polite"
     >
-      <h2 class="text-lg font-semibold">{t(locale, 'checkout.fallbackHeading')}</h2>
-      <p class="text-muted mt-1 text-sm">{t(locale, 'checkout.unavailableText')}</p>
+      <h2 class="text-lg font-semibold">
+        {heading ?? t(locale, 'checkout.fallbackHeading')}
+      </h2>
+      <p class="text-muted mt-1 text-sm">
+        {text ?? t(locale, 'checkout.unavailableText')}
+      </p>
 
       <label class="sr-only" for="checkout-fallback-message">
-        {t(locale, 'checkout.fallbackHeading')}
+        {heading ?? t(locale, 'checkout.fallbackHeading')}
       </label>
       <textarea
         id="checkout-fallback-message"

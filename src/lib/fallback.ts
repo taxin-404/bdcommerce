@@ -32,10 +32,15 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-export function buildCheckoutFallback(input: {
-  config: SiteConfig;
+export function buildManualFallback(input: {
   locale: Locale;
+  symbol: string;
+  bnDigits: boolean;
+  social: SiteConfig['social'];
+  contact: SiteConfig['contact'];
   priced: PricedCart | null;
+  /** A coupon applied in the checkout UI but not yet included in priced.total. */
+  extraDiscount?: number;
   customer: {
     name: string;
     phone: string;
@@ -45,12 +50,13 @@ export function buildCheckoutFallback(input: {
     division: string;
   };
 }): CheckoutFallback {
-  const { config, locale, priced, customer } = input;
+  const { locale, symbol, bnDigits, social, contact, priced, customer } = input;
+  const extraDiscount = input.extraDiscount ?? 0;
   const money = (amount: number) =>
     formatBdt(amount, {
       locale,
-      symbol: config.currency.symbol,
-      bnDigits: config.currency.bnDigits,
+      symbol,
+      bnDigits,
     });
 
   const lines = [
@@ -60,7 +66,7 @@ export function buildCheckoutFallback(input: {
           .filter((line) => line.available)
           .map((line) =>
             t(locale, 'checkout.fallbackLine', {
-              qty: config.currency.bnDigits ? toBanglaDigits(line.qty) : line.qty,
+              qty: bnDigits ? toBanglaDigits(line.qty) : line.qty,
               title: (() => {
                 const productTitle = locale === 'bn' && line.title_bn ? line.title_bn : line.title;
                 return line.variant_title
@@ -78,13 +84,21 @@ export function buildCheckoutFallback(input: {
       '',
       t(locale, 'checkout.fallbackSubtotal', { amount: money(priced.subtotal) }),
     );
-    if (priced.discount > 0) {
-      lines.push(t(locale, 'checkout.fallbackDiscount', { amount: money(priced.discount) }));
+    if (priced.discount + extraDiscount > 0) {
+      lines.push(
+        t(locale, 'checkout.fallbackDiscount', {
+          amount: money(priced.discount + extraDiscount),
+        }),
+      );
     }
     if (priced.shipping_fee !== null) {
       lines.push(t(locale, 'checkout.fallbackDelivery', { amount: money(priced.shipping_fee) }));
     }
-    lines.push(t(locale, 'checkout.fallbackTotal', { amount: money(priced.total) }));
+    lines.push(
+      t(locale, 'checkout.fallbackTotal', {
+        amount: money(Math.max(0, priced.total - extraDiscount)),
+      }),
+    );
   }
 
   const address = formatOrderAddress(customer);
@@ -98,26 +112,50 @@ export function buildCheckoutFallback(input: {
   );
 
   const message = lines.join('\n');
-  const messenger = isHttpUrl(config.social.messenger)
-    ? withText(config.social.messenger, message)
+  const messenger = isHttpUrl(social.messenger)
+    ? withText(social.messenger, message)
     : null;
 
-  let whatsapp = isHttpUrl(config.social.whatsapp)
-    ? withText(config.social.whatsapp, message)
+  let whatsapp = isHttpUrl(social.whatsapp)
+    ? withText(social.whatsapp, message)
     : null;
   if (!whatsapp) {
-    const normalized = normalizePhone(config.contact.phone);
+    const normalized = normalizePhone(contact.phone);
     if (normalized) {
       whatsapp = `https://wa.me/88${normalized}?text=${encodeURIComponent(message)}`;
     }
   }
 
-  const normalizedContact = normalizePhone(config.contact.phone);
+  const normalizedContact = normalizePhone(contact.phone);
   const phone = normalizedContact
     ? `tel:+88${normalizedContact}`
-    : config.contact.phone
-      ? `tel:${config.contact.phone.replace(/[^\d+]/g, '')}`
+    : contact.phone
+      ? `tel:${contact.phone.replace(/[^\d+]/g, '')}`
       : null;
 
   return { message, messenger, whatsapp, phone };
+}
+
+export function buildCheckoutFallback(input: {
+  config: SiteConfig;
+  locale: Locale;
+  priced: PricedCart | null;
+  customer: {
+    name: string;
+    phone: string;
+    address: string;
+    upazila: string;
+    district: string;
+    division: string;
+  };
+}): CheckoutFallback {
+  return buildManualFallback({
+    locale: input.locale,
+    symbol: input.config.currency.symbol,
+    bnDigits: input.config.currency.bnDigits,
+    social: input.config.social,
+    contact: input.config.contact,
+    priced: input.priced,
+    customer: input.customer,
+  });
 }

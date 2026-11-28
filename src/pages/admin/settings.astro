@@ -4,7 +4,13 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
 import PresetPicker from '../../components/admin/PresetPicker.astro';
 import { resolveAdminLocale } from '../../lib/admin-locale';
 import { loadAdminSettings } from '../../lib/admin-settings';
+import { BD_GEO } from '../../lib/geo';
 import { t } from '../../lib/i18n';
+import {
+  brandKeyFromLogoUrl,
+  imageVariantKey,
+  paymentQrKeyFromUrl,
+} from '../../lib/image';
 import { countRoundTrips, logQueryCount } from '../../lib/query-log';
 import { SECTION_TYPES, type SectionType } from '../../lib/sections';
 
@@ -20,6 +26,15 @@ const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.
 
 const { value: db, count } = countRoundTrips(env.DB);
 const { config, sections } = await loadAdminSettings(db);
+const testImage = await db
+  .prepare('SELECT r2_key FROM product_images ORDER BY id LIMIT 1')
+  .first<{ r2_key: string }>();
+const testImageKey =
+  (testImage ? imageVariantKey(testImage.r2_key, 'thumb') : '') ||
+  brandKeyFromLogoUrl(config.logo) ||
+  paymentQrKeyFromUrl(config.payments.bkash.qr) ||
+  paymentQrKeyFromUrl(config.payments.nagad.qr) ||
+  '';
 logQueryCount('admin/settings', count());
 
 const inputClass =
@@ -55,6 +70,10 @@ const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
     data-saved={t(locale, 'admin.settings.saved')}
     data-remove={t(locale, 'admin.settings.removeSection')}
     data-sections-required={t(locale, 'admin.settings.sectionsRequired')}
+    data-zone-label-en={t(locale, 'admin.settings.zoneLabelEn')}
+    data-zone-label-bn={t(locale, 'admin.settings.zoneLabelBn')}
+    data-zone-fee={t(locale, 'admin.settings.zoneFee')}
+    data-remove-zone={t(locale, 'admin.settings.removeZone')}
   >
     <section class="rounded-xl bg-white p-4 shadow-sm">
       <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.business')}</h2>
@@ -110,10 +129,47 @@ const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
     </section>
 
     <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.images')}</h2>
+      <p class="mt-1 text-sm text-slate-500">{t(locale, 'admin.settings.imageAddressHint')}</p>
+      <div class="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <label class="block text-sm">
+          <span class={fieldLabel}>{t(locale, 'admin.settings.imageAddress')}</span>
+          <input
+            name="image_address"
+            type="url"
+            inputmode="url"
+            placeholder="https://images.example.com"
+            value={config.images.address}
+            class={inputClass}
+          />
+        </label>
+        <div class="flex items-end">
+          <button
+            id="image-address-test"
+            type="button"
+            class="rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-60"
+            data-test-key={testImageKey}
+            data-testing={t(locale, 'admin.settings.imageAddressTesting')}
+            data-ok={t(locale, 'admin.settings.imageAddressOk')}
+            data-failed={t(locale, 'admin.settings.imageAddressFailed')}
+            data-empty={t(locale, 'admin.settings.imageAddressEmpty')}
+            data-no-image={t(locale, 'admin.settings.imageAddressNoImage')}
+            disabled={!testImageKey}
+          >
+            {t(locale, 'admin.settings.imageAddressTest')}
+          </button>
+        </div>
+      </div>
+      <p id="image-address-status" class="mt-2 hidden text-sm" aria-live="polite"></p>
+    </section>
+
+    <section class="rounded-xl bg-white p-4 shadow-sm">
       <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.shipping')}</h2>
-      <div class="mt-3 space-y-3">
+      <p class="mt-1 text-sm text-slate-500">{t(locale, 'admin.settings.zonesHint')}</p>
+
+      <div id="zone-list" class="mt-3 space-y-3">
         {config.shipping.zones.map((zone) => (
-          <div class="grid gap-3 sm:grid-cols-3" data-zone-id={zone.id}>
+          <div class="grid gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-4" data-zone-id={zone.id}>
             <label class={labelClass}>
               <span class={fieldLabel}>{t(locale, 'admin.settings.zoneLabelEn')}</span>
               <input class={`${inputClass} js-zone-label-en`} value={zone.label.en} />
@@ -131,9 +187,38 @@ const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
                 value={zone.fee}
               />
             </label>
+            <div class="flex items-end">
+              <button
+                type="button"
+                class="js-zone-remove rounded border border-rose-300 px-3 py-2 text-sm text-rose-700 hover:bg-rose-50"
+              >
+                {t(locale, 'admin.settings.removeZone')}
+              </button>
+            </div>
           </div>
         ))}
-        <label class="block max-w-xs text-sm">
+      </div>
+
+      <button
+        id="zone-add"
+        type="button"
+        class="mt-3 rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
+      >
+        {t(locale, 'admin.settings.addZone')}
+      </button>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-2">
+        <label class="block text-sm">
+          <span class={fieldLabel}>{t(locale, 'admin.settings.fallbackZone')}</span>
+          <select id="fallback-zone" class={inputClass}>
+            {config.shipping.zones.map((zone) => (
+              <option value={zone.id} selected={config.shipping.fallbackZone === zone.id}>
+                {zone.label[locale] || zone.label.en}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label class="block text-sm">
           <span class={fieldLabel}>{t(locale, 'admin.settings.freeShippingOver')}</span>
           <input
             name="free_shipping_over"
@@ -143,6 +228,42 @@ const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
             class={inputClass}
           />
         </label>
+      </div>
+
+      <h3 class="mt-5 text-sm font-semibold text-slate-700">
+        {t(locale, 'admin.settings.districtZones')}
+      </h3>
+      <p class="mt-1 text-sm text-slate-500">{t(locale, 'admin.settings.districtZonesHint')}</p>
+      <div class="mt-3 space-y-2">
+        {BD_GEO.divisions.map((division) => (
+          <details class="rounded-lg border border-slate-200 p-3">
+            <summary class="cursor-pointer text-sm font-medium">
+              {division.nameBn} · {division.name}
+            </summary>
+            <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {division.districts.map((district) => {
+                const selectedZone =
+                  config.shipping.districtZones[district.name] ??
+                  config.shipping.fallbackZone;
+                return (
+                  <label class="text-xs">
+                    <span class="mb-1 block">{district.nameBn} · {district.name}</span>
+                    <select
+                      class={`${inputClass} js-district-zone`}
+                      data-district={district.name}
+                    >
+                      {config.shipping.zones.map((zone) => (
+                        <option value={zone.id} selected={selectedZone === zone.id}>
+                          {zone.label[locale] || zone.label.en}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
+          </details>
+        ))}
       </div>
     </section>
 
@@ -178,6 +299,36 @@ const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
                 </option>
               </select>
             </label>
+            <div class="mt-3 rounded border border-slate-100 p-2">
+              <span class={fieldLabel}>{t(locale, 'admin.settings.walletQr')}</span>
+              {config.payments[wallet].qr && (
+                <img
+                  src={config.payments[wallet].qr}
+                  alt=""
+                  class="mb-2 h-24 w-24 rounded border border-slate-200 object-contain"
+                />
+              )}
+              <input
+                class="js-wallet-qr-file block w-full text-xs"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+              />
+              <button
+                type="button"
+                class="js-wallet-qr-upload mt-2 rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                data-uploading={t(locale, 'admin.settings.walletQrUploading')}
+                data-failed={t(locale, 'admin.settings.walletQrFailed')}
+              >
+                {t(locale, 'admin.settings.walletQrUpload')}
+              </button>
+              <input
+                class="js-wallet-qr-value"
+                type="hidden"
+                value={config.payments[wallet].qr}
+              />
+              <p class="js-wallet-qr-status mt-1 hidden text-xs" aria-live="polite"></p>
+              <p class="mt-1 text-xs text-slate-500">{t(locale, 'admin.settings.walletQrHint')}</p>
+            </div>
           </div>
         ))}
       </div>
@@ -228,6 +379,22 @@ const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
           <span>{t(locale, 'admin.settings.fraudAdvance')}</span>
         </label>
       </div>
+    </section>
+
+    <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.inventory')}</h2>
+      <label class="mt-3 block max-w-xs text-sm">
+        <span class={fieldLabel}>{t(locale, 'admin.settings.lowStockThreshold')}</span>
+        <input
+          name="low_stock_threshold"
+          type="number"
+          min="1"
+          max="10000"
+          value={config.inventory.lowStockThreshold}
+          class={inputClass}
+        />
+      </label>
+      <p class="mt-1 text-sm text-slate-500">{t(locale, 'admin.settings.lowStockThresholdHint')}</p>
     </section>
 
     <section class="rounded-xl bg-white p-4 shadow-sm">

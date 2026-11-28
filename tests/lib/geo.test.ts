@@ -74,12 +74,16 @@ describe('bd-geo dataset', () => {
     expect(localizedGeoName(dhaka!, 'bn')).toBe('ঢাকা');
     expect(localizedGeoName(dhaka!, 'en')).toBe('Dhaka');
 
-    const zones = [
-      { id: 'dhaka', label: { en: 'Inside Dhaka', bn: 'ঢাকার ভিতরে' }, fee: 60 },
-      { id: 'outside', label: { en: 'Outside Dhaka', bn: 'ঢাকার বাইরে' }, fee: 120 },
-    ];
-    expect(shippingZoneForDistrict(zones, 'Dhaka').id).toBe('dhaka');
-    expect(shippingZoneForDistrict(zones, 'Cumilla').id).toBe('outside');
-    expect(shippingZoneForDistrict(zones, "Cox's Bazar").id).toBe('outside');
+    const shipping = {
+      zones: [
+        { id: 'dhaka', label: { en: 'Inside Dhaka', bn: 'ঢাকার ভিতরে' }, fee: 60 },
+        { id: 'outside', label: { en: 'Outside Dhaka', bn: 'ঢাকার বাইরে' }, fee: 120 },
+      ],
+      districtZones: { Dhaka: 'dhaka' },
+      fallbackZone: 'outside',
+    };
+    expect(shippingZoneForDistrict(shipping, 'Dhaka').id).toBe('dhaka');
+    expect(shippingZoneForDistrict(shipping, 'Cumilla').id).toBe('outside');
+    expect(shippingZoneForDistrict(shipping, "Cox's Bazar").id).toBe('outside');
   });
 });

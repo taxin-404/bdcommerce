@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import StorefrontLayout from '../../layouts/StorefrontLayout.astro';
 import AddToCart from '../../components/cart/AddToCart';
 import { t } from '../../lib/i18n';
-import { imageUrl } from '../../lib/image';
+import { imageUrl, resolveImageBase } from '../../lib/image';
 import { pickLocalized, resolveLocale } from '../../lib/locale';
 import { formatBdt, toBanglaDigits } from '../../lib/money';
 import { isProductInStock, pickDefaultVariant } from '../../lib/product';
@@ -94,7 +94,7 @@ const { results: images } = await db
 
 logQueryCount('product', count());
 
-const publicUrl = env.R2_PUBLIC_URL ?? '';
+const publicUrl = resolveImageBase(config.images.address, env.R2_PUBLIC_URL);
 const title = pickLocalized(product.title, product.title_bn, locale);
 const description = pickLocalized(product.description, product.description_bn, locale);
 const categoryName = product.category_name
@@ -126,7 +126,7 @@ const variantsWithPrice = variants.map((variant) => {
     ? t(locale, 'storefront.inStock')
     : variant.stock <= 0
       ? t(locale, 'storefront.outOfStock')
-      : variant.stock <= 5
+      : variant.stock <= config.inventory.lowStockThreshold
         ? t(locale, 'storefront.lowStock', {
             count:
               locale === 'bn' && config.currency.bnDigits
@@ -143,7 +143,7 @@ const variantsWithPrice = variants.map((variant) => {
       ? 'in'
       : variant.stock <= 0
         ? 'out'
-        : variant.stock <= 5
+        : variant.stock <= config.inventory.lowStockThreshold
           ? 'low'
           : 'in',
   };

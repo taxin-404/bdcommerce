@@ -6,22 +6,15 @@ The current order of work is in doc/ROADMAP.md (Phase 8 is split into 8A launch-
 
 ## Before real launch
 - BEFORE REAL LAUNCH: verify the Steadfast integration with real merchant credentials (create a test parcel, refresh its status). Replace the community-doc assumptions in DECISIONS.md with the official docs from the Steadfast merchant dashboard. Decide whether to send delivery_type.
-- BEFORE REAL LAUNCH: editable district-to-zone mapping (see Phase 8A below).
-- BEFORE REAL LAUNCH: paid-only (cash collected) dashboard metric (see Phase 8A below).
+- BEFORE REAL LAUNCH: set the image address (custom-domain R2 URL for production; r2.dev only for testing) and run the Settings “Test” against a real stored image.
 - BEFORE REAL LAUNCH: decide whether Turnstile is enabled, review the fraud limits, and set a strong ADMIN_PASSPHRASE (16+ random characters).
 - BEFORE REAL LAUNCH: run the GUI test on the deployed shop (setup wizard, image upload, COD and bKash checkout, order lifecycle).
-- BEFORE REAL LAUNCH: decide image serving. Default is the Worker /img/* route. r2.dev is for testing only (rate-limited, no caching); production uses a custom domain.
 
-## Phase 8A (launch-critical)
-- Manual bKash/Nagad payment UX at checkout: "Copy number" and "Copy amount" buttons; on mobile a "Open bKash/Nagad" dial link (tel: USSD code, verify the codes against current provider docs); optional QR image uploaded by the owner in Settings (stored in R2) and shown next to the number; short Bangla/English step-by-step instructions that differ for personal vs merchant wallets; a clear "order not confirmed until verified" notice.
-- Add an "Image address (R2 public URL)" field in Admin > Settings, stored in the settings table, which takes priority over the R2_PUBLIC_URL variable. Add a short help text with the steps for custom domain (production) or r2.dev (testing only). Hide the "images are served through the Worker" banner once it is set and works.
-- Delivery-zone mapping is hardcoded to the `dhaka`/`outside` zone ids and Dhaka district. Make the district-to-zone mapping editable in admin settings, and allow adding/removing zones once mapping is editable.
-- Dashboard revenue is placed-order gross value. Add a separate cash-collected/paid-only metric and make the low-stock threshold configurable (currently fixed at 5).
-- A rejected wallet payment can only be re-verified after a manual rollback; add an explicit re-verify action if owners need it.
-- The order status API accepts a note, but the admin UI does not collect one. Add an optional note field with the transition buttons.
-- The coupon admin page supports create, active toggle, and delete only. Add full edit for percent/fixed value, date window, and max uses.
-- Inventory: stock restores skip lines whose product or variant was deleted after the order. Decide whether to keep a full variant/product snapshot or accept the loss.
-- If the Turnstile widget script cannot load, the submit button stays blocked. Add a friendly retry/fallback path.
+## Phase 8A (launch-critical, deferred follow-ups)
+- Nagad mobile dial link is deliberately omitted because no official nagad.com.bd page documents the USSD code. Add it only after an official source is found and record the URL in DECISIONS.md.
+- Wallet QR replacement leaves the previous R2 object orphaned. Add best-effort cleanup after the settings row commits (Phase 9 cache/purge work is a good place).
+- Logo and wallet QR URLs are frozen at upload time. Store the R2 key (or `/img/...`) and resolve the base at render, or rewrite both URLs when the image address changes.
+- The image-address “Test” success path cannot be exercised locally because the setting rejects localhost; verify it once with a real public R2 URL before launch.
 
 ## Phase 8B (polish, SEO, reach)
 - Add a "My orders" page: order numbers saved in the browser plus a phone check. No login.
@@ -56,6 +49,7 @@ The current order of work is in doc/ROADMAP.md (Phase 8 is split into 8A launch-
 - The legacy `idx_orders_status` / `idx_orders_phone` indexes are redundant after the Phase 5 composite keyset indexes. Remove them after confirming production plans.
 - The low-stock count reads every tracked variant at or below 5 before filtering the product state. Re-measure on a large catalog or maintain a counter.
 - Settings/coupon/preset admin writes do not purge a cached storefront yet because caching is not implemented. Add purge hooks when Phase 9 cache is added.
+- The admin Worker-image banner reads the `images` setting on every admin page when `R2_PUBLIC_URL` is unset (one extra row read). Consolidate it with the auth/settings read or cache the resolved image base.
 
 ## Phase 10 (packaging)
 - The seed has no demo images. Add demo images or document the admin upload step in the owner guide.

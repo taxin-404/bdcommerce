@@ -19,10 +19,8 @@ if (requested === 'bn' || requested === 'en') {
 const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
 
 const { value: db, count } = countRoundTrips(env.DB);
-const [{ config, setupCompleted }, dashboard] = await Promise.all([
-  loadStorefront(db),
-  loadAdminDashboard(db),
-]);
+const { config, setupCompleted } = await loadStorefront(db);
+const dashboard = await loadAdminDashboard(db, new Date(), config.inventory.lowStockThreshold);
 
 if (!setupCompleted) {
   // Only a first-run shop pays for this extra existence check; an existing
@@ -65,10 +63,18 @@ const cards = [
     hint: t(locale, 'admin.dashboardCards.weekHint'),
   },
   {
+    label: t(locale, 'admin.dashboardCards.cashCollected'),
+    value: money(dashboard.weekCashCollected),
+    href: '/admin/orders',
+    hint: t(locale, 'admin.dashboardCards.cashHint'),
+  },
+  {
     label: t(locale, 'admin.dashboardCards.lowStock'),
     value: String(dashboard.lowStockCount),
     href: '/admin/products',
-    hint: t(locale, 'admin.dashboardCards.lowStockHint'),
+    hint: t(locale, 'admin.dashboardCards.lowStockHint', {
+      count: config.inventory.lowStockThreshold,
+    }),
   },
 ];
 ---

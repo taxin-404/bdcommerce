@@ -3,6 +3,7 @@ import {
   loadConfigFromRows,
   localizedTextSchema,
   safePathOrUrl,
+  shippingZoneSchema,
   siteConfigSchema,
   themePresetSchema,
   type SiteConfig,
@@ -20,6 +21,8 @@ const editableConfigSchema = siteConfigSchema.pick({
   theme: true,
   shipping: true,
   payments: true,
+  images: true,
+  inventory: true,
   social: true,
   fraud: true,
   contact: true,
@@ -50,6 +53,18 @@ export const settingsUpdateSchema = editableConfigSchema
 
 export type SettingsUpdate = z.infer<typeof settingsUpdateSchema>;
 
+const setupShippingSchema = z
+  .object({
+    zones: z.array(shippingZoneSchema).min(1).max(50),
+    freeShippingOver: z.number().int().nonnegative().max(1_000_000_000).nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const ids = new Set(value.zones.map((zone) => zone.id));
+    if (ids.size !== value.zones.length) {
+      ctx.addIssue({ code: 'custom', path: ['zones'], message: 'Zone ids must be unique' });
+    }
+  });
+
 const setupSchema = z
   .object({
     name: localizedTextSchema,
@@ -57,7 +72,7 @@ const setupSchema = z
     logo: safePathOrUrl.optional(),
     theme_preset: themePresetSchema.default('clean'),
     contact: siteConfigSchema.shape.contact,
-    shipping: siteConfigSchema.shape.shipping,
+    shipping: setupShippingSchema,
     payments: siteConfigSchema.shape.payments,
     first_category: z.object({
       name: z.string().trim().min(1).max(120),
@@ -81,6 +96,8 @@ const CONFIG_KEYS = new Set([
   'theme',
   'shipping',
   'payments',
+  'images',
+  'inventory',
   'social',
   'fraud',
   'contact',
@@ -137,10 +154,16 @@ export async function completeSetup(
   input: SetupInput,
   categorySlug: string,
 ): Promise<void> {
+  const zoneIds = new Set(input.shipping.zones.map((zone) => zone.id));
+  const shipping = {
+    ...input.shipping,
+    districtZones: zoneIds.has('dhaka') ? { Dhaka: 'dhaka' } : {},
+    fallbackZone: zoneIds.has('outside') ? 'outside' : input.shipping.zones[0]!.id,
+  };
   const settings: Array<[string, unknown]> = [
     ['name', input.name],
     ['contact', input.contact],
-    ['shipping', input.shipping],
+    ['shipping', shipping],
     ['payments', input.payments],
     ['theme', { preset: input.theme_preset }],
     ['setup_completed', true],

@@ -16,6 +16,7 @@ import {
   idempotencyKeyForIntent,
 } from '../../lib/checkout-key';
 import type { SiteConfig } from '../../lib/config';
+import { buildManualFallback } from '../../lib/fallback';
 import type { GeoDivision } from '../../lib/geo';
 import { t, type Locale } from '../../lib/i18n';
 import { formatBdt } from '../../lib/money';
@@ -35,6 +36,8 @@ interface Props {
   turnstileSiteKey: string;
   payments: SiteConfig['payments'];
   couponsEnabled: boolean;
+  social: SiteConfig['social'];
+  contact: SiteConfig['contact'];
 }
 
 interface AppliedCoupon {
@@ -71,6 +74,8 @@ export default function CheckoutForm({
   turnstileSiteKey,
   payments,
   couponsEnabled,
+  social,
+  contact,
 }: Props) {
   const [lines, setLines] = useState<StoredCartLine[]>([]);
   const [ready, setReady] = useState(false);
@@ -110,10 +115,13 @@ export default function CheckoutForm({
     payments.bkash.enabled ||
     payments.nagad.enabled;
   const formVisible = ready && anyPaymentEnabled && lines.length > 0;
-  const { token, containerRef, reset: resetTurnstile } = useTurnstile(
-    turnstileSiteKey,
-    formVisible,
-  );
+  const {
+    token,
+    containerRef,
+    reset: resetTurnstile,
+    status: turnstileStatus,
+    retry: retryTurnstile,
+  } = useTurnstile(turnstileSiteKey, formVisible);
 
   useEffect(() => {
     setLines(readCart());
@@ -191,6 +199,32 @@ export default function CheckoutForm({
   const hasUnavailable = Boolean(priced && !priced.all_available);
 
   const money = (amount: number) => formatBdt(amount, { locale, symbol, bnDigits });
+  const totalAmount = priced
+    ? Math.max(
+        0,
+        priced.subtotal - (appliedCoupon?.discount ?? 0) + (priced.shipping_fee ?? 0),
+      )
+    : 0;
+  const turnstileFallback =
+    turnstileSiteKey && turnstileStatus === 'error' && priced
+      ? buildManualFallback({
+          locale,
+          symbol,
+          bnDigits,
+          social,
+          contact,
+          priced,
+          extraDiscount: appliedCoupon?.discount ?? 0,
+          customer: {
+            name: form.name.trim(),
+            phone: form.phone.trim(),
+            address: form.address.trim(),
+            upazila: upazilaName,
+            district: districtName,
+            division: divisionName,
+          },
+        })
+      : null;
 
   const updateField = (key: keyof CheckoutFormValues, value: string) => {
     setForm((previous) => ({ ...previous, [key]: value }));
@@ -508,8 +542,26 @@ export default function CheckoutForm({
               trxId={paymentTrxId}
               onSender={setPaymentSender}
               onTrxId={setPaymentTrxId}
+              amount={totalAmount}
+              currencySymbol={symbol}
+              bnDigits={bnDigits}
             />
             {turnstileSiteKey && <div ref={containerRef} class="mt-3" />}
+            {turnstileSiteKey && turnstileStatus === 'error' && (
+              <div
+                class="mt-3 rounded-[var(--radius)] border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+                role="alert"
+              >
+                <p>{t(locale, 'checkout.turnstileLoadFailed')}</p>
+                <button
+                  type="button"
+                  class="mt-2 rounded-[var(--radius)] border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium"
+                  onClick={retryTurnstile}
+                >
+                  {t(locale, 'checkout.turnstileRetry')}
+                </button>
+              </div>
+            )}
           </CheckoutFields>
 
           {couponsEnabled && (
@@ -588,6 +640,14 @@ export default function CheckoutForm({
       </div>
 
       {fallback && <CheckoutFallback locale={locale} fallback={fallback} />}
+      {turnstileFallback && (
+        <CheckoutFallback
+          locale={locale}
+          fallback={turnstileFallback}
+          heading={t(locale, 'checkout.fallbackHeading')}
+          text={t(locale, 'checkout.turnstileFallbackText')}
+        />
+      )}
     </div>
   );
 }

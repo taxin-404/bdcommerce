@@ -107,6 +107,14 @@ class TestStatement {
     };
   }
 
+  async raw<T>(): Promise<T[]> {
+    this.owner.roundTrips += 1;
+    const rows = this.owner.sqlite.prepare(this.sql).all(...(this.params as never[])) as Array<
+      Record<string, unknown>
+    >;
+    return rows.map((row) => Object.values(row)) as T[];
+  }
+
   /** Batch execution keeps rows for RETURNING statements and still reports meta. */
   execute(): D1Result {
     if (this.owner.failStatementIncludes && this.sql.includes(this.owner.failStatementIncludes)) {

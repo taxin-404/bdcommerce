@@ -36,7 +36,7 @@
     "rateLimited": "Too many attempts. Try again later.",
     "notConfigured": "ADMIN_PASSPHRASE is not set for this deployment.",
     "backToShop": "Back to shop",
-    "r2Banner": "Images are served through the Worker because R2_PUBLIC_URL is not set. Set a public R2 URL to save Worker requests.",
+    "r2Banner": "Images are served through the Worker. Set the image address (R2 public URL) in Settings to save Worker requests.",
     "welcome": "Welcome back",
     "stats": {
       "products": "Products",
@@ -105,7 +105,7 @@
       "save": "Save product",
       "saved": "Saved",
       "saveFailed": "Could not save the product",
-      "deleteConfirm": "Delete this product and its images?",
+      "deleteConfirm": "Delete this product and its images? Stock from deleted products cannot be restored if an order is cancelled or returned later.",
       "backToList": "Back to products",
       "noCategory": "Uncategorised",
       "deleteFailed": "Could not delete the product"
@@ -156,7 +156,11 @@
       "courier_unavailable": "The courier is unavailable right now. Try again later.",
       "courier_invalid_response": "The courier returned an unexpected response.",
       "phone_not_blocked": "That phone is not on the blocklist.",
-      "phone_not_flagged": "That phone is not flagged."
+      "phone_not_flagged": "That phone is not flagged.",
+      "product_in_active_orders": "This product is in a pending, confirmed, or shipped order. Archive or deactivate it instead of deleting it.",
+      "variant_in_active_orders": "This variant is in a pending, confirmed, or shipped order. Deactivate it instead of deleting it.",
+      "coupon_max_uses_below_used": "Maximum uses cannot be lower than the current used count.",
+      "invalid_wallet": "Choose bKash or Nagad."
     },
     "reindex": {
       "action": "Reindex search",
@@ -282,7 +286,8 @@
         "returned": "Returned",
         "payment_verified": "Payment verified",
         "payment_rejected": "Payment rejected",
-        "payment_refunded": "Payment refunded"
+        "payment_refunded": "Payment refunded",
+        "payment_reverified": "Payment re-verified"
       },
       "backToOrder": "Back to order",
       "paymentVerification": "Payment verification",
@@ -294,7 +299,11 @@
       "verifyConfirm": "Mark this payment as paid?",
       "rejectConfirm": "Reject this payment and mark it unpaid?",
       "refundConfirm": "Mark this payment as refunded?",
-      "paymentFailed": "Could not update the payment."
+      "paymentFailed": "Could not update the payment.",
+      "reverifyPayment": "Re-verify payment",
+      "reverifyConfirm": "Re-verify this rejected payment and mark it paid?",
+      "transitionNote": "Note (optional)",
+      "transitionNoteHint": "Saved to the timeline with this status change"
     },
     "print": {
       "action": "Print",
@@ -314,11 +323,13 @@
       "weekRevenue": "This week's revenue",
       "weekHint": "Saturday–Friday, Asia/Dhaka; cancelled and returned excluded",
       "lowStock": "Low-stock variants",
-      "lowStockHint": "Tracked, active variants at or below 5; showing up to 10",
+      "lowStockHint": "Tracked, active variants at or below {count}; showing up to 10",
       "lowStockTitle": "Low-stock tracked variants",
       "noLowStock": "No tracked variants are low on stock.",
       "stockLeft": "{count} left",
-      "viewPending": "Review pending orders"
+      "viewPending": "Review pending orders",
+      "cashCollected": "Cash collected (paid only)",
+      "cashHint": "Saturday–Friday, Asia/Dhaka; paid only, refunded excluded"
     },
     "dashboard": "Dashboard",
     "coupons": "Coupons",
@@ -344,7 +355,11 @@
       "deleteConfirm": "Delete this coupon?",
       "delete": "Delete",
       "deleteFailed": "Could not delete the coupon.",
-      "saveFailed": "Could not save the coupon."
+      "saveFailed": "Could not save the coupon.",
+      "edit": "Edit",
+      "editTitle": "Edit coupon",
+      "saveChanges": "Save changes",
+      "maxUsesBelowUsed": "Maximum uses cannot be lower than the current used count."
     },
     "blocklistPage": {
       "title": "Blocklist",
@@ -435,7 +450,30 @@
         "testimonials": "Testimonials",
         "faq": "FAQ"
       },
-      "sectionsRequired": "Keep at least one homepage section."
+      "sectionsRequired": "Keep at least one homepage section.",
+      "images": "Images",
+      "imageAddress": "Image address (R2 public URL)",
+      "imageAddressHint": "Use a custom domain in production. r2.dev is for testing only (rate-limited, no caching). Start with https:// and do not add a trailing slash.",
+      "imageAddressTest": "Test",
+      "imageAddressTesting": "Loading a stored image...",
+      "imageAddressOk": "The image loaded successfully.",
+      "imageAddressFailed": "The image did not load. Check the URL and public access.",
+      "imageAddressEmpty": "Enter an image address first.",
+      "imageAddressNoImage": "Upload a product image before testing.",
+      "zonesHint": "Every district maps to a zone. Districts without a mapping use the fallback zone.",
+      "removeZone": "Remove zone",
+      "addZone": "Add zone",
+      "fallbackZone": "Fallback zone",
+      "districtZones": "District → zone",
+      "districtZonesHint": "Choose a delivery zone for every district.",
+      "walletQr": "Payment QR (optional)",
+      "walletQrUpload": "Upload QR",
+      "walletQrUploading": "Uploading QR...",
+      "walletQrFailed": "Could not upload the QR image.",
+      "walletQrHint": "PNG, JPEG, or WebP, max 1 MB. Shown next to the number at checkout.",
+      "inventory": "Inventory",
+      "lowStockThreshold": "Low-stock threshold",
+      "lowStockThresholdHint": "The dashboard shows tracked variants at or below this stock level. Default 5."
     },
     "setup": {
       "title": "Setup wizard",
@@ -622,7 +660,27 @@
       "coupon_exhausted": "This coupon has reached its usage limit.",
       "coupon_invalid": "This coupon is not configured correctly."
     },
-    "fallbackDiscount": "Discount: {amount}"
+    "fallbackDiscount": "Discount: {amount}",
+    "copyNumber": "Copy number",
+    "copyAmount": "Copy amount",
+    "copied": "Copied",
+    "openWallet": "Open {method}",
+    "walletQrAlt": "{method} payment QR",
+    "walletQrCaption": "Scan the QR to pay",
+    "walletNotConfirmed": "The order is not confirmed until the payment is verified. Send the money and enter the transaction ID.",
+    "walletSteps": {
+      "personal1": "Open the {method} app or use its USSD menu.",
+      "personal2": "Choose Send Money.",
+      "personal3": "Send {amount} to {number}.",
+      "personal4": "Confirm with your PIN and copy the transaction ID.",
+      "merchant1": "Open the {method} app or scan the QR.",
+      "merchant2": "Choose Payment or Merchant Payment.",
+      "merchant3": "Enter merchant number {number} and amount {amount}.",
+      "merchant4": "Confirm and copy the transaction ID."
+    },
+    "turnstileLoadFailed": "The security check could not load. Try again, or order through Messenger or WhatsApp below.",
+    "turnstileRetry": "Retry the security check",
+    "turnstileFallbackText": "We can still take your order manually. Send us the message below."
   },
   "order": {
     "title": "Order",

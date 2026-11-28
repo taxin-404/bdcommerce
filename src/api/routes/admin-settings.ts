@@ -9,8 +9,14 @@ import {
   brandKeyFromLogoUrl,
   brandLogoKey,
   brandLogoUrl,
+  detectImageType,
   IMAGE_MAX_BYTES,
   isWebPBytes,
+  PAYMENT_QR_MAX_BYTES,
+  paymentQrKey,
+  paymentQrUrl,
+  readImageAddress,
+  resolveImageBase,
 } from '../../lib/image';
 import type { AdminEnv } from '../middleware/admin';
 import { badRequest, validationErrorResponse } from '../validation';
@@ -87,7 +93,8 @@ adminSettingsRoutes.post('/logo', async (c) => {
     },
   });
 
-  const url = brandLogoUrl(key, c.env.R2_PUBLIC_URL ?? '');
+  const address = await readImageAddress(c.env.DB);
+  const url = brandLogoUrl(key, resolveImageBase(address, c.env.R2_PUBLIC_URL));
   try {
     await c.env.DB.prepare(
       'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
@@ -111,5 +118,48 @@ adminSettingsRoutes.post('/logo', async (c) => {
     }
   }
 
+  return c.json({ ok: true, data: { url } }, 201);
+});
+
+adminSettingsRoutes.post('/qr', async (c) => {
+  let body: Record<string, unknown>;
+  try {
+    body = await c.req.parseBody();
+  } catch {
+    return badRequest(c, 'invalid_upload', 'Upload a PNG, JPEG, or WebP QR image');
+  }
+
+  const wallet = body.wallet;
+  if (wallet !== 'bkash' && wallet !== 'nagad') {
+    return badRequest(c, 'invalid_wallet', 'Choose bKash or Nagad');
+  }
+
+  const file = body.qr;
+  if (!(file instanceof File)) {
+    return badRequest(c, 'missing_file', 'Choose a QR image first');
+  }
+  if (file.size > PAYMENT_QR_MAX_BYTES) {
+    return c.json(
+      { ok: false, error: { code: 'file_too_large', message: 'The QR image exceeds 1 MB' } },
+      413,
+    );
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = detectImageType(bytes);
+  if (!type) {
+    return badRequest(c, 'invalid_type', 'The QR image must be PNG, JPEG, or WebP');
+  }
+
+  const key = paymentQrKey(wallet, type);
+  await c.env.IMAGES.put(key, bytes, {
+    httpMetadata: {
+      contentType: type === 'jpg' ? 'image/jpeg' : `image/${type}`,
+      cacheControl: 'public, max-age=31536000, immutable',
+    },
+  });
+
+  const address = await readImageAddress(c.env.DB);
+  const url = paymentQrUrl(key, resolveImageBase(address, c.env.R2_PUBLIC_URL));
   return c.json({ ok: true, data: { url } }, 201);
 });
