@@ -1,8 +1,21 @@
   import { adminErrorMessage } from './admin-errors';
   import { uploadBrandLogo } from './brand-logo';
+  import { formatIssues, type SettingsIssue } from '../lib/settings-errors';
 
   const form = document.getElementById('settings-form') as HTMLFormElement | null;
   const status = document.getElementById('settings-status');
+  const fieldLabels = (() => {
+    const node = document.getElementById('settings-field-labels');
+    if (!node?.textContent) return {} as Record<string, string>;
+    try {
+      const parsed = JSON.parse(node.textContent) as unknown;
+      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+        ? (parsed as Record<string, string>)
+        : {};
+    } catch {
+      return {};
+    }
+  })();
   const logoInput = document.getElementById('logo-value') as HTMLInputElement | null;
   const logoFile = document.getElementById('logo-file') as HTMLInputElement | null;
   const logoButton = document.getElementById('logo-upload') as HTMLButtonElement | null;
@@ -21,6 +34,117 @@
     status.textContent = message;
     status.className = error ? 'text-sm text-rose-700' : 'text-sm text-emerald-700';
     status.classList.remove('hidden');
+  }
+
+  function showStatusLines(lines: string[], error = false) {
+    if (!status) return;
+    status.replaceChildren();
+    lines.forEach((line, index) => {
+      if (index > 0) status.appendChild(document.createElement('br'));
+      status.appendChild(document.createTextNode(line));
+    });
+    status.className = error ? 'text-sm text-rose-700' : 'text-sm text-emerald-700';
+    status.classList.remove('hidden');
+  }
+
+  const HIGHLIGHT_CLASSES = ['ring-2', 'ring-rose-400', 'border-rose-400'];
+  let highlighted: Element | null = null;
+
+  function clearHighlight() {
+    if (!highlighted) return;
+    highlighted.classList.remove(...HIGHLIGHT_CLASSES);
+    highlighted.removeAttribute('aria-invalid');
+    highlighted = null;
+  }
+
+  function highlightInput(element: Element | null) {
+    clearHighlight();
+    if (!element) return;
+    element.classList.add(...HIGHLIGHT_CLASSES);
+    element.setAttribute('aria-invalid', 'true');
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (element instanceof HTMLElement) {
+      element.focus({ preventScroll: true });
+    }
+    highlighted = element;
+  }
+
+  function inputForPath(path: string): Element | null {
+    const exact: Record<string, string> = {
+      'name.en': 'input[name=name_en]',
+      'name.bn': 'input[name=name_bn]',
+      'tagline.en': 'input[name=tagline_en]',
+      'tagline.bn': 'input[name=tagline_bn]',
+      logo: '#logo-file',
+      theme: '#theme-preset',
+      'shipping.freeShippingOver': 'input[name=free_shipping_over]',
+      'shipping.fallbackZone': '#fallback-zone',
+      'images.address': 'input[name=image_address]',
+      'inventory.lowStockThreshold': 'input[name=low_stock_threshold]',
+      'contact.phone': 'input[name=contact_phone]',
+      'contact.email': 'input[name=contact_email]',
+      'contact.address.en': 'input[name=address_en]',
+      'contact.address.bn': 'input[name=address_bn]',
+      'social.facebook': 'input[name=social_facebook]',
+      'social.messenger': 'input[name=social_messenger]',
+      'social.whatsapp': 'input[name=social_whatsapp]',
+      'social.instagram': 'input[name=social_instagram]',
+      'fraud.enabled': '#fraud-enabled',
+      'fraud.orderLimitPerPhone24h': '#fraud-phone-limit',
+      'fraud.orderLimitPerIp24h': '#fraud-ip-limit',
+      'fraud.advancePaymentForFlaggedPhones': '#fraud-advance',
+    };
+
+    if (exact[path]) return document.querySelector<HTMLElement>(exact[path]);
+    if (path.startsWith('theme.')) return document.querySelector<HTMLElement>('#theme-preset');
+    if (path === 'home_sections' || path.startsWith('home_sections.')) {
+      return document.getElementById('section-list');
+    }
+
+    const zone = path.match(/^shipping\.zones\.(\d+)\.(fee|label\.en|label\.bn|id)$/);
+    if (zone) {
+      const row = zoneRows()[Number(zone[1])];
+      if (!row) return null;
+      const selector =
+        zone[2] === 'fee'
+          ? '.js-zone-fee'
+          : zone[2] === 'label.en'
+            ? '.js-zone-label-en'
+            : zone[2] === 'label.bn'
+              ? '.js-zone-label-bn'
+              : null;
+      return selector ? row.querySelector<HTMLElement>(selector) : row;
+    }
+
+    const district = path.match(/^shipping\.districtZones\.(.+)$/);
+    if (district) {
+      return (
+        Array.from(
+          form?.querySelectorAll<HTMLElement>('.js-district-zone') ?? [],
+        ).find(
+          (select) =>
+            (select as unknown as HTMLSelectElement).dataset.district === district[1],
+        ) ??
+        null
+      );
+    }
+
+    const payment = path.match(/^payments\.(bkash|nagad|cod)\.(number|type|qr|enabled)$/);
+    if (payment) {
+      const wallet = payment[1];
+      if (wallet === 'cod') return document.getElementById('cod-enabled');
+      const container = form?.querySelector<HTMLElement>(`[data-wallet="${wallet}"]`);
+      if (payment[2] === 'qr') return container ?? null;
+      const selector =
+        payment[2] === 'number'
+          ? '.js-wallet-number'
+          : payment[2] === 'type'
+            ? '.js-wallet-type'
+            : '.js-wallet-enabled';
+      return container?.querySelector<HTMLElement>(selector) ?? null;
+    }
+
+    return null;
   }
 
   logoButton?.addEventListener('click', async () => {
@@ -315,6 +439,7 @@
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!form) return;
+    clearHighlight();
 
     const theme = JSON.parse(themeJson) as Record<string, unknown>;
     const preset = (document.getElementById('theme-preset') as HTMLSelectElement | null)?.value;
@@ -415,16 +540,35 @@
       });
       const result = (await response.json().catch(() => null)) as {
         ok?: boolean;
-        error?: { code?: string };
+        error?: { code?: string; issues?: SettingsIssue[] };
       } | null;
 
       if (!response.ok || !result?.ok) {
+        if (response.status >= 500) {
+          showStatus(form.dataset.failedServer ?? '', true);
+          return;
+        }
+
+        const issues = result?.error?.issues;
+        if (
+          response.status === 400 &&
+          result?.error?.code === 'validation_error' &&
+          Array.isArray(issues) &&
+          issues.length > 0
+        ) {
+          const lines = formatIssues(issues, fieldLabels);
+          showStatusLines(lines, true);
+          const first = issues.find((issue) => inputForPath(issue.path));
+          if (first) highlightInput(inputForPath(first.path));
+          return;
+        }
+
         showStatus(adminErrorMessage(result?.error?.code, form.dataset.failed ?? ''), true);
         return;
       }
       showStatus(form.dataset.saved ?? '');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch {
-      showStatus(form.dataset.failed ?? '', true);
+      showStatus(form.dataset.failedServer ?? '', true);
     }
   });

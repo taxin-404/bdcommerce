@@ -109,6 +109,14 @@ At the end of every phase, the agent appends its rulings here under a new headin
 - No schema migration is needed for 8A: settings are JSON rows and all new dashboard/delete queries use existing indexes. EXPLAIN output is covered by `tests/lib/phase8a-indexes.test.ts` and the Phase 7 index test.
 - Page-body D1 round trips after 8A: dashboard 2 (storefront config + 6-statement KPI batch) + 1 auth + 1 banner check when `R2_PUBLIC_URL` is unset; settings 2 (settings row + test-image key) + 1 auth + the same conditional banner read; checkout/cart unchanged (1 settings read, then client re-price); order detail 2 + 1 auth. No GET handler writes D1.
 
+## Fix — settings save validation errors (`fix-settings-save`)
+- The server response stays `400 { code: 'validation_error', issues: [{ path, message }] }`; validation was not weakened.
+- The settings page injects bn/en field labels as `settings-field-labels` JSON from `buildSettingsLabels`. `src/lib/settings-errors.ts` turns `(path, message)` into readable lines and falls back to the raw path for unknown fields.
+- `src/scripts/admin-settings-form.ts` now shows every issue as “Field: problem”, scrolls to and highlights the first matching input, and keeps the old mapped-error path for non-validation failures. HTTP 5xx and network failures show “Server error, please try again.” instead of the generic save message.
+- Reproduction on this tree: the exact “Nagad on + number, everything else unchanged” Save returns **200 with no issues** on a fresh database and on a database with Phase 6-style settings rows. The 400 cases exercised for the new UI are real invalid inputs: bKash enabled with a blank number (`payments.bkash.number`), a social link without http(s) (`social.facebook`), an insecure image address (`images.address`), and an over-limit zone fee (`shipping.zones.0.fee`).
+- The phase-6 merge, phase-7 merge, and current main were checked in throwaway worktrees with fresh local D1 databases. All three accepted the Nagad case (PASS); no commit first fails for that input.
+- Regression tests: `tests/lib/settings-errors.test.ts` covers field-name formatting plus valid/invalid wallet, social, fee, image-address, one-zone, and old-homepage-section cases. No new dependencies.
+
 ## Phase 1–2
 
 ### Phase 1 — schema, config, seed

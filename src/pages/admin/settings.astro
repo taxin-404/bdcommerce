@@ -4,6 +4,7 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
 import PresetPicker from '../../components/admin/PresetPicker.astro';
 import { resolveAdminLocale } from '../../lib/admin-locale';
 import { loadAdminSettings } from '../../lib/admin-settings';
+import { buildSettingsLabels } from '../../lib/settings-labels';
 import { BD_GEO } from '../../lib/geo';
 import { t } from '../../lib/i18n';
 import {
@@ -47,6 +48,10 @@ const missingSections = SECTION_TYPES.filter(
 );
 const sectionLabel = (type: SectionType) => t(locale, `admin.settings.sectionTypes.${type}`);
 const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
+const settingsLabelsJson = JSON.stringify(buildSettingsLabels(locale)).replace(
+  /</g,
+  '\\u003c',
+);
 ---
 
 <AdminLayout title={t(locale, 'admin.settings.title')} locale={locale} current="settings">
@@ -67,6 +72,7 @@ const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
     id="settings-form"
     class="space-y-4"
     data-failed={t(locale, 'admin.settings.saveFailed')}
+    data-failed-server={t(locale, 'admin.settings.saveFailedServer')}
     data-saved={t(locale, 'admin.settings.saved')}
     data-remove={t(locale, 'admin.settings.removeSection')}
     data-sections-required={t(locale, 'admin.settings.sectionsRequired')}
@@ -493,6 +499,8 @@ const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
   <div class="mt-4">
     <PresetPicker locale={locale} />
   </div>
+
+  <script type="application/json" id="settings-field-labels" set:html={settingsLabelsJson}></script>
 </AdminLayout>
 
 
