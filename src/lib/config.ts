@@ -168,18 +168,29 @@ const shippingObjectSchema = z
  * invalid values from Settings are still rejected by the object schema.
  */
 const shippingSchema = z.preprocess((value) => {
-  if (
-    isPlainObject(value) &&
-    typeof value.fallbackZone !== 'string' &&
-    Array.isArray(value.zones) &&
-    value.zones.length > 0
-  ) {
-    const first = value.zones[0] as { id?: unknown };
-    if (typeof first?.id === 'string') {
-      return { ...value, fallbackZone: first.id };
-    }
+  if (!isPlainObject(value)) return value;
+
+  const next = { ...value };
+  const zones = Array.isArray(next.zones)
+    ? (next.zones as Array<{ id?: unknown }>)
+    : [];
+  const ids = zones
+    .map((zone) => zone?.id)
+    .filter((id): id is string => typeof id === 'string');
+
+  if (!isPlainObject(next.districtZones)) {
+    // Pre-8A resolved Dhaka district to the `dhaka` zone (or the first zone)
+    // and every other district to the `outside` zone (or the last zone).
+    const dhakaZone = ids.includes('dhaka') ? 'dhaka' : ids[0];
+    next.districtZones = dhakaZone ? { Dhaka: dhakaZone } : {};
   }
-  return value;
+  if (typeof next.fallbackZone !== 'string') {
+    next.fallbackZone = ids.includes('outside')
+      ? 'outside'
+      : (ids[ids.length - 1] ?? '');
+  }
+
+  return next;
 }, shippingObjectSchema);
 
 const paymentMethodSchema = z.object({
@@ -278,27 +289,12 @@ function deepMerge(base: unknown, override: unknown): unknown {
  */
 function normalizeLegacyBase(base: SiteConfig): Record<string, unknown> {
   const raw = base as unknown as Record<string, unknown>;
-  const shipping = isPlainObject(raw.shipping) ? { ...raw.shipping } : raw.shipping;
-
-  if (isPlainObject(shipping)) {
-    if (!isPlainObject(shipping.districtZones)) shipping.districtZones = {};
-    if (
-      typeof shipping.fallbackZone !== 'string' &&
-      Array.isArray(shipping.zones) &&
-      shipping.zones.length > 0
-    ) {
-      const first = shipping.zones[0] as { id?: unknown };
-      if (typeof first?.id === 'string') shipping.fallbackZone = first.id;
-    }
-  }
-
   return {
     ...raw,
     images: isPlainObject(raw.images) ? raw.images : { address: '' },
     inventory: isPlainObject(raw.inventory)
       ? raw.inventory
       : { lowStockThreshold: 5 },
-    shipping,
   };
 }
 

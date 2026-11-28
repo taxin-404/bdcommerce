@@ -270,7 +270,31 @@ describe('Phase 8A settings schema', () => {
     const parsed = mergeConfig(legacy as unknown as SiteConfig, {});
     expect(parsed.images.address).toBe('');
     expect(parsed.inventory.lowStockThreshold).toBe(5);
-    expect(parsed.shipping.fallbackZone).toBe('dhaka');
-    expect(parsed.shipping.districtZones).toEqual({});
+    // Pre-8A: Dhaka district -> dhaka (60), every other district -> outside (120).
+    expect(parsed.shipping.fallbackZone).toBe('outside');
+    expect(parsed.shipping.districtZones).toEqual({ Dhaka: 'dhaka' });
+    expect(shippingZoneForDistrict(parsed.shipping, 'Dhaka').fee).toBe(60);
+    expect(shippingZoneForDistrict(parsed.shipping, 'Sylhet').fee).toBe(120);
+  });
+
+  it('preserves the old first/last zone choice for custom legacy zone ids', () => {
+    const legacy = {
+      ...defaultConfig,
+      images: undefined,
+      inventory: undefined,
+      shipping: {
+        zones: [
+          { id: 'inside', label: { en: 'Inside', bn: 'ভিতরে' }, fee: 70 },
+          { id: 'far', label: { en: 'Far', bn: 'দূরে' }, fee: 150 },
+        ],
+        freeShippingOver: null,
+      },
+    };
+
+    const parsed = mergeConfig(legacy as unknown as SiteConfig, {});
+    expect(parsed.shipping.districtZones).toEqual({ Dhaka: 'inside' });
+    expect(parsed.shipping.fallbackZone).toBe('far');
+    expect(shippingZoneForDistrict(parsed.shipping, 'Dhaka').fee).toBe(70);
+    expect(shippingZoneForDistrict(parsed.shipping, 'Sylhet').fee).toBe(150);
   });
 });
