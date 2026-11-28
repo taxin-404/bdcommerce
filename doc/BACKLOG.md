@@ -3,6 +3,9 @@
 Items deferred from earlier phases. Each one is tagged with the phase that should handle it.
 At the end of every phase, the agent appends its deferred items here. When an item is done, delete it.
 
+## Before real launch
+- BEFORE REAL LAUNCH: verify the Steadfast integration with real merchant credentials (create a test parcel, refresh its status). Replace the community-doc assumptions in DECISIONS.md with the official docs from the Steadfast merchant dashboard. Decide whether to send delivery_type.
+
 ## Phase 8 (i18n, SEO, accessibility, Phase 7 follow-ups)
 - Delivery-zone mapping is hardcoded to the `dhaka`/`outside` zone ids and Dhaka district. Make the district-to-zone mapping editable in admin settings, and allow adding/removing zones once mapping is editable.
 - The coupon admin page supports create, active toggle, and delete only. Add full edit for percent/fixed value, date window, and max uses.
