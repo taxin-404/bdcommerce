@@ -473,7 +473,12 @@
       "walletQrHint": "PNG, JPEG, or WebP, max 1 MB. Shown next to the number at checkout.",
       "inventory": "Inventory",
       "lowStockThreshold": "Low-stock threshold",
-      "lowStockThresholdHint": "The dashboard shows tracked variants at or below this stock level. Default 5."
+      "lowStockThresholdHint": "The dashboard shows tracked variants at or below this stock level. Default 5.",
+      "logoLabel": "Logo",
+      "zone": "Zone",
+      "zoneId": "Zone id",
+      "enabledLabel": "Enabled",
+      "saveFailedServer": "Server error, please try again."
     },
     "setup": {
       "title": "Setup wizard",

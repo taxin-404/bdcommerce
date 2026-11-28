@@ -473,7 +473,12 @@
       "walletQrHint": "PNG, JPEG বা WebP, সর্বোচ্চ ১ MB। চেকআউটে নম্বরের পাশে দেখানো হবে।",
       "inventory": "স্টক",
       "lowStockThreshold": "কম স্টকের সীমা",
-      "lowStockThresholdHint": "ড্যাশবোর্ডে এই সংখ্যা বা কম স্টকের ভ্যারিয়েন্ট দেখানো হবে। ডিফল্ট ৫।"
+      "lowStockThresholdHint": "ড্যাশবোর্ডে এই সংখ্যা বা কম স্টকের ভ্যারিয়েন্ট দেখানো হবে। ডিফল্ট ৫।",
+      "logoLabel": "লোগো",
+      "zone": "জোন",
+      "zoneId": "জোন আইডি",
+      "enabledLabel": "সক্রিয়",
+      "saveFailedServer": "সার্ভার সমস্যা, আবার চেষ্টা করুন।"
     },
     "setup": {
       "title": "সেটআপ উইজার্ড",
