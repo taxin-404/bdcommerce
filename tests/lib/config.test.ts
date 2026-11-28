@@ -42,6 +42,25 @@ describe('mergeConfig', () => {
   });
 });
 
+describe('fraud defaults', () => {
+  it('defaults to 5 orders per phone and 50 per IP in 24 hours', () => {
+    expect(defaultConfig.fraud).toMatchObject({
+      enabled: true,
+      orderLimitPerPhone24h: 5,
+      orderLimitPerIp24h: 50,
+      advancePaymentForFlaggedPhones: true,
+    });
+  });
+
+  it('keeps the 50/IP default when only the phone limit is overridden', () => {
+    const merged = mergeConfig(defaultConfig, {
+      fraud: { orderLimitPerPhone24h: 2 },
+    });
+    expect(merged.fraud.orderLimitPerPhone24h).toBe(2);
+    expect(merged.fraud.orderLimitPerIp24h).toBe(50);
+  });
+});
+
 describe('loadConfig', () => {
   beforeEach(() => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});

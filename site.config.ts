@@ -40,7 +40,7 @@ const config = {
   fraud: {
     enabled: true,
     orderLimitPerPhone24h: 5,
-    orderLimitPerIp24h: 20,
+    orderLimitPerIp24h: 50,
     advancePaymentForFlaggedPhones: true,
   },
   contact: { phone: '', email: '', address: { en: '', bn: '' } },

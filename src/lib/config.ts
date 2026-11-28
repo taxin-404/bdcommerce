@@ -95,7 +95,7 @@ const trackingSchema = z.object({
 const fraudSchema = z.object({
   enabled: z.boolean().default(true),
   orderLimitPerPhone24h: z.number().int().positive().max(10_000).default(5),
-  orderLimitPerIp24h: z.number().int().positive().max(10_000).default(20),
+  orderLimitPerIp24h: z.number().int().positive().max(10_000).default(50),
   advancePaymentForFlaggedPhones: z.boolean().default(true),
 });
 

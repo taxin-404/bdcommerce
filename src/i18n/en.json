@@ -401,7 +401,7 @@
       "personal": "Personal",
       "merchant": "Merchant",
       "fraud": "Fraud controls",
-      "fraudHint": "Rate limits use a rolling 24-hour window. The blocklist always applies, even when limits are off. Many customers can share one mobile-carrier IP, so raise the network limit if real buyers are ever blocked.",
+      "fraudHint": "Rate limits use a rolling 24-hour window. Defaults are 5 orders per phone and 50 per network. The blocklist always applies, even when limits are off. Many customers can share one mobile-carrier IP, so raise the network limit if real buyers are ever blocked.",
       "fraudEnabled": "Enable order rate limits and the advance-payment rule",
       "fraudPhoneLimit": "Maximum orders per phone (24h)",
       "fraudIpLimit": "Maximum orders per network (24h)",
