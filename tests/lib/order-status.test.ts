@@ -6,7 +6,7 @@ import {
   changeOrderStatus,
   type OrderStatus,
 } from '../../src/lib/order-status';
-import { createTestDb, insertProduct } from '../helpers/d1-sqlite';
+import { createTestDb, insertCoupon, insertProduct } from '../helpers/d1-sqlite';
 import {
   insertOrder,
   insertOrderEvent,
@@ -236,6 +236,76 @@ describe('changeOrderStatus', () => {
     adapter.unavailable = true;
     const result = await changeOrderStatus({ db, orderId, to: 'confirmed' });
     expect(result).toMatchObject({ ok: false, code: 'db_unavailable' });
+  });
+});
+
+function couponUsage(sqlite: ReturnType<typeof createTestDb>['sqlite']): number {
+  const row = sqlite
+    .prepare("SELECT used FROM coupons WHERE code = 'SAVE10'")
+    .get() as unknown as { used: number };
+  return row.used;
+}
+
+function setupCouponOrder() {
+  const env = createTestDb();
+  insertCoupon(env.sqlite, { code: 'SAVE10', type: 'percent', value: 10, maxUses: 4, used: 1 });
+  const orderId = insertOrder(env.sqlite, { status: 'pending' });
+  env.sqlite
+    .prepare("UPDATE orders SET coupon_code = 'SAVE10' WHERE id = ?")
+    .run(orderId);
+  return { ...env, orderId };
+}
+
+describe('coupon release on cancel and return', () => {
+  it('releases a coupon use exactly once when an order is cancelled', async () => {
+    const { db, sqlite, orderId } = setupCouponOrder();
+    expect(couponUsage(sqlite)).toBe(1);
+
+    const cancelled = await changeOrderStatus({ db, orderId, to: 'cancelled' });
+    expect(cancelled).toMatchObject({ ok: true, to: 'cancelled' });
+    expect(couponUsage(sqlite)).toBe(0);
+
+    const again = await changeOrderStatus({ db, orderId, to: 'cancelled' });
+    expect(again).toMatchObject({ ok: false, code: 'invalid_transition' });
+    expect(couponUsage(sqlite)).toBe(0);
+  });
+
+  it('releases a coupon use when an order is returned', async () => {
+    const { db, sqlite, orderId } = setupCouponOrder();
+    for (const to of ['confirmed', 'shipped'] as const) {
+      await changeOrderStatus({ db, orderId, to });
+    }
+
+    const returned = await changeOrderStatus({ db, orderId, to: 'returned' });
+    expect(returned).toMatchObject({ ok: true, to: 'returned' });
+    expect(couponUsage(sqlite)).toBe(0);
+  });
+
+  it('lets only one of two simultaneous cancels release the coupon', async () => {
+    const { db, sqlite, orderId } = setupCouponOrder();
+
+    const results = await Promise.all([
+      changeOrderStatus({ db, orderId, to: 'cancelled' }),
+      changeOrderStatus({ db, orderId, to: 'cancelled' }),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(couponUsage(sqlite)).toBe(0);
+  });
+
+  it('never releases below zero and ignores orders without a coupon', async () => {
+    const { db, sqlite } = createTestDb();
+    insertCoupon(sqlite, { code: 'SAVE10', used: 0, maxUses: null });
+    const orderId = insertOrder(sqlite, { status: 'pending' });
+    sqlite.prepare("UPDATE orders SET coupon_code = 'SAVE10' WHERE id = ?").run(orderId);
+
+    const cancelled = await changeOrderStatus({ db, orderId, to: 'cancelled' });
+    expect(cancelled.ok).toBe(true);
+    expect(couponUsage(sqlite)).toBe(0);
+
+    const noCoupon = insertOrder(sqlite, { status: 'pending' });
+    const missing = await changeOrderStatus({ db, orderId: noCoupon, to: 'cancelled' });
+    expect(missing.ok).toBe(true);
   });
 });
 

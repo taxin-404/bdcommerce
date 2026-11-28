@@ -37,6 +37,12 @@ const config = {
   },
   social: { facebook: '', messenger: '', whatsapp: '', instagram: '' },
   tracking: { fbPixelId: '', capi: false },
+  fraud: {
+    enabled: true,
+    orderLimitPerPhone24h: 5,
+    orderLimitPerIp24h: 50,
+    advancePaymentForFlaggedPhones: true,
+  },
   contact: { phone: '', email: '', address: { en: '', bn: '' } },
 } satisfies SiteConfig;
 

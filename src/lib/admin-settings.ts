@@ -21,6 +21,7 @@ const editableConfigSchema = siteConfigSchema.pick({
   shipping: true,
   payments: true,
   social: true,
+  fraud: true,
   contact: true,
 });
 
@@ -81,6 +82,7 @@ const CONFIG_KEYS = new Set([
   'shipping',
   'payments',
   'social',
+  'fraud',
   'contact',
 ]);
 

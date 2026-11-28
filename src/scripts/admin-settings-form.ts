@@ -157,6 +157,14 @@
         bkash: wallet('bkash'),
         nagad: wallet('nagad'),
       },
+      fraud: {
+        enabled:
+          (document.getElementById('fraud-enabled') as HTMLInputElement | null)?.checked ?? true,
+        orderLimitPerPhone24h: Number(value('fraud-phone-limit')) || 5,
+        orderLimitPerIp24h: Number(value('fraud-ip-limit')) || 50,
+        advancePaymentForFlaggedPhones:
+          (document.getElementById('fraud-advance') as HTMLInputElement | null)?.checked ?? true,
+      },
       contact: {
         phone: value('contact_phone'),
         email: value('contact_email'),

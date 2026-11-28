@@ -1,7 +1,7 @@
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { createCheckoutOrder, type CheckoutLineSnapshot } from '../../lib/checkout';
-import { loadConfig, loadConfigFromRows, type SiteConfig } from '../../lib/config';
+import { loadConfigFromRows, type SiteConfig } from '../../lib/config';
 import {
   COUPON_ERROR_MESSAGES,
   couponErrorStatus,
@@ -9,12 +9,20 @@ import {
 } from '../../lib/coupons';
 import { isD1Unavailable } from '../../lib/db-errors';
 import { buildCheckoutFallback } from '../../lib/fallback';
+import {
+  countRecentIpOrders,
+  ensureIpHashSalt,
+  fraudLimitReached,
+  hashIp,
+  loadCheckoutContext,
+} from '../../lib/fraud';
 import { resolveGeoSelection } from '../../lib/geo';
 import { isAllowedOrigin } from '../../lib/http';
-import { findOrderByIdempotencyKey, generateOrderNumber } from '../../lib/orders';
+import { generateOrderNumber } from '../../lib/orders';
 import { normalizePhone } from '../../lib/phone';
 import { priceCart } from '../../lib/pricing';
 import { countRoundTrips, logQueryCount } from '../../lib/query-log';
+import { hitRateLimit, rateLimitKey } from '../../lib/rate-limit';
 import { checkoutRequestHash } from '../../lib/request-hash';
 import { readTurnstileConfig, verifyTurnstile } from '../../lib/turnstile';
 import { checkoutSchema } from '../../lib/validation/checkout';
@@ -46,6 +54,27 @@ checkoutRoutes.post(
         { ok: false, error: { code: 'bad_origin', message: 'Cross-origin request rejected' } },
         403,
       );
+    }
+
+    // Best-effort in-isolate pre-filter: blunts checkout floods before the
+    // settings/limit D1 batch runs. It costs no D1 round trip and resets when
+    // the isolate is recycled.
+    const remoteIp = c.req.header('cf-connecting-ip')?.trim() || null;
+    if (remoteIp) {
+      const limit = hitRateLimit(rateLimitKey('checkout', remoteIp), 30, 60_000);
+      if (!limit.allowed) {
+        c.header('Retry-After', String(limit.retryAfter));
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'rate_limited',
+              message: 'Too many requests. Please wait a moment and try again.',
+            },
+          },
+          429,
+        );
+      }
     }
 
     const input = c.req.valid('json');
@@ -89,9 +118,16 @@ checkoutRoutes.post(
       couponCode: input.coupon_code ?? null,
     });
     let config: SiteConfig | null = null;
+    const now = new Date().toISOString();
 
     try {
-      config = await loadConfig(db);
+      const context = await loadCheckoutContext({
+        db,
+        phone,
+        idempotencyKey: input.idempotency_key,
+        now,
+      });
+      config = context.config;
 
       const paymentConfig =
         paymentMethod === 'cod'
@@ -103,11 +139,11 @@ checkoutRoutes.post(
         return badRequest(c, 'payment_unavailable', 'That payment method is not available.');
       }
 
-      const existing = await findOrderByIdempotencyKey(db, input.idempotency_key);
-      if (existing) {
+      if (context.existing) {
         if (
-          existing.phone !== phone ||
-          (existing.request_hash && existing.request_hash !== requestHash)
+          context.existing.phone !== phone ||
+          (context.existing.request_hash &&
+            context.existing.request_hash !== requestHash)
         ) {
           return c.json(
             {
@@ -123,13 +159,90 @@ checkoutRoutes.post(
         return c.json({
           ok: true,
           data: {
-            number: existing.number,
-            status: existing.status,
-            total: existing.total,
-            created_at: existing.created_at,
+            number: context.existing.number,
+            status: context.existing.status,
+            total: context.existing.total,
+            created_at: context.existing.created_at,
             existing: true,
           },
         });
+      }
+
+      if (context.blocked) {
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'phone_blocked',
+              message:
+                'We cannot accept orders from this phone number. Please contact the shop.',
+            },
+          },
+          403,
+        );
+      }
+
+      if (
+        fraudLimitReached(
+          config,
+          context.phoneOrders24h,
+          config.fraud.orderLimitPerPhone24h,
+        )
+      ) {
+        c.header('Retry-After', '3600');
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'order_rate_limited',
+              message:
+                'Too many orders were placed from this phone number today. Please contact the shop.',
+            },
+          },
+          429,
+        );
+      }
+
+      if (
+        config.fraud.enabled &&
+        config.fraud.advancePaymentForFlaggedPhones &&
+        context.advancePaymentRequired &&
+        paymentMethod === 'cod'
+      ) {
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'advance_payment_required',
+              message:
+                'This phone number must pay in advance. Please choose bKash or Nagad.',
+            },
+          },
+          409,
+        );
+      }
+
+      // The salted IP hash is only needed while the fraud limits are on; with
+      // fraud disabled no IP-derived value is computed or stored.
+      let ipHash: string | null = null;
+      if (remoteIp && config.fraud.enabled) {
+        const salt = await ensureIpHashSalt(db, context.settings);
+        ipHash = await hashIp(remoteIp, salt);
+        const ipOrders = await countRecentIpOrders(db, ipHash, now);
+        if (fraudLimitReached(config, ipOrders, config.fraud.orderLimitPerIp24h)) {
+          c.header('Retry-After', '3600');
+          return c.json(
+            {
+              ok: false,
+              error: {
+                code: 'order_rate_limited',
+                message:
+                  'Too many orders were placed from this network today. Please contact the shop.',
+              },
+            },
+            429,
+          );
+        }
       }
 
       const turnstile = readTurnstileConfig(c.env);
@@ -137,7 +250,7 @@ checkoutRoutes.post(
         const verification = await verifyTurnstile({
           secretKey: turnstile.secretKey,
           token: input.turnstile_token,
-          remoteIp: c.req.header('cf-connecting-ip') ?? null,
+          remoteIp,
         });
         if (!verification.ok) {
           return badRequest(
@@ -202,6 +315,8 @@ checkoutRoutes.post(
         paymentSender,
         paymentTrxId,
         couponCode: priced.coupon?.code ?? null,
+        ipHash,
+        now,
       });
 
       if (result.ok) {
@@ -240,6 +355,20 @@ checkoutRoutes.post(
             error: {
               code: 'idempotency_conflict',
               message: 'This idempotency key belongs to another order.',
+            },
+          },
+          409,
+        );
+      }
+
+      if (result.code === 'duplicate_payment_trx') {
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'duplicate_payment_trx',
+              message:
+                'This transaction ID has already been used. Please check it and try again.',
             },
           },
           409,

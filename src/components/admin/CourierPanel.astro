@@ -1,0 +1,88 @@
+---
+import type { AdminOrderDetailRow } from '../../lib/admin-order-detail';
+import type { AdminLocale } from '../../lib/admin-locale';
+import { formatDhakaDateTime } from '../../lib/datetime';
+import { t } from '../../lib/i18n';
+
+interface Props {
+  order: AdminOrderDetailRow;
+  locale: AdminLocale;
+}
+
+const { order, locale } = Astro.props;
+
+const statusKey = order.courier_status
+  ? `admin.order.courierStatus.${order.courier_status}`
+  : '';
+const translatedStatus = statusKey ? t(locale, statusKey) : '';
+const statusLabel =
+  translatedStatus && translatedStatus !== statusKey
+    ? translatedStatus
+    : (order.courier_status ?? '');
+
+const claimActive =
+  Boolean(order.courier_claim && order.courier_claimed_at) &&
+  Date.now() - Date.parse(order.courier_claimed_at ?? '') < 2 * 60 * 1000;
+const canSend = !order.consignment_id && order.status === 'confirmed' && !claimActive;
+---
+
+<section class="rounded-xl bg-white p-4 shadow-sm">
+  <h2 class="text-sm font-semibold text-slate-600">{t(locale, 'admin.order.courierTitle')}</h2>
+
+  {
+    order.consignment_id ? (
+      <div class="mt-2 space-y-2 text-sm">
+        <dl class="space-y-1">
+          <div class="flex justify-between gap-2">
+            <dt class="text-slate-500">{t(locale, 'admin.order.courierConsignment')}</dt>
+            <dd class="font-mono break-all">{order.consignment_id}</dd>
+          </div>
+          <div class="flex justify-between gap-2">
+            <dt class="text-slate-500">{t(locale, 'admin.order.courierTracking')}</dt>
+            <dd class="font-mono break-all">{order.tracking_code ?? '—'}</dd>
+          </div>
+          <div class="flex justify-between gap-2">
+            <dt class="text-slate-500">{t(locale, 'admin.order.courierStatusLabel')}</dt>
+            <dd>{statusLabel || '—'}</dd>
+          </div>
+          <div class="flex justify-between gap-2">
+            <dt class="text-slate-500">{t(locale, 'admin.order.courierUpdated')}</dt>
+            <dd>
+              {order.courier_status_updated_at
+                ? formatDhakaDateTime(order.courier_status_updated_at, locale)
+                : '—'}
+            </dd>
+          </div>
+        </dl>
+        <button
+          type="button"
+          class="js-courier w-full rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
+          data-action="refresh"
+          data-order-id={order.id}
+          data-failed={t(locale, 'admin.order.courierRefreshFailed')}
+        >
+          {t(locale, 'admin.order.courierRefresh')}
+        </button>
+      </div>
+    ) : canSend ? (
+      <div class="mt-2 space-y-2">
+        <button
+          type="button"
+          class="js-courier w-full rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800"
+          data-action="send"
+          data-order-id={order.id}
+          data-confirm={t(locale, 'admin.order.courierSendConfirm')}
+          data-failed={t(locale, 'admin.order.courierSendFailed')}
+        >
+          {t(locale, 'admin.order.courierSend')}
+        </button>
+      </div>
+    ) : (
+      <p class="mt-2 text-sm text-slate-500">
+        {claimActive
+          ? t(locale, 'admin.order.courierInProgress')
+          : t(locale, 'admin.order.courierNotConfirmed')}
+      </p>
+    )
+  }
+</section>

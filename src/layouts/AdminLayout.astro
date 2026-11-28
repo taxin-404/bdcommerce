@@ -15,6 +15,7 @@ interface Props {
     | 'orders'
     | 'order'
     | 'coupons'
+    | 'blocklist'
     | 'settings'
     | 'setup';
 }
@@ -57,6 +58,20 @@ const errorCodes = [
   'coupon_invalid',
   'duplicate_coupon',
   'validation_error',
+  'order_not_confirmed',
+  'courier_not_sent',
+  'courier_in_progress',
+  'courier_conflict',
+  'courier_duplicate',
+  'courier_not_configured',
+  'courier_timeout',
+  'courier_auth',
+  'courier_rejected',
+  'courier_rate_limited',
+  'courier_unavailable',
+  'courier_invalid_response',
+  'phone_not_blocked',
+  'phone_not_flagged',
 ] as const;
 const adminErrors = Object.fromEntries(
   errorCodes.map((code) => [code, t(locale, `admin.errors.${code}`)]),
@@ -69,6 +84,7 @@ const navItems = [
   { key: 'products', href: '/admin/products', label: t(locale, 'admin.products') },
   { key: 'categories', href: '/admin/categories', label: t(locale, 'admin.categories') },
   { key: 'coupons', href: '/admin/coupons', label: t(locale, 'admin.coupons') },
+  { key: 'blocklist', href: '/admin/blocklist', label: t(locale, 'admin.blocklist') },
   { key: 'settings', href: '/admin/settings', label: t(locale, 'admin.settings.title') },
 ] as const;
 ---

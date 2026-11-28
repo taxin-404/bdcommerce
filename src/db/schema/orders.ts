@@ -35,6 +35,10 @@ export const orders = sqliteTable(
     courier: text('courier'),
     consignmentId: text('consignment_id'),
     trackingCode: text('tracking_code'),
+    courierStatus: text('courier_status'),
+    courierStatusUpdatedAt: text('courier_status_updated_at'),
+    courierClaim: text('courier_claim'),
+    courierClaimedAt: text('courier_claimed_at'),
     ipHash: text('ip_hash'),
     idempotencyKey: text('idempotency_key').unique(),
     requestHash: text('request_hash'),
@@ -61,6 +65,8 @@ export const orders = sqliteTable(
       desc(table.createdAt),
       desc(table.id),
     ),
+    index('idx_orders_ip_created').on(table.ipHash, table.createdAt),
+    index('idx_orders_payment_trx').on(table.paymentMethod, table.paymentTrxId),
     check(
       'orders_status_check',
       sql`${table.status} in ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'returned')`,
@@ -123,6 +129,13 @@ export const coupons = sqliteTable(
 );
 
 export const blocklist = sqliteTable('blocklist', {
+  phone: text('phone').primaryKey(),
+  reason: text('reason'),
+  createdAt: text('created_at').notNull(),
+});
+
+/** Phones that must pay in advance instead of using cash on delivery. */
+export const phoneFlags = sqliteTable('phone_flags', {
   phone: text('phone').primaryKey(),
   reason: text('reason'),
   createdAt: text('created_at').notNull(),

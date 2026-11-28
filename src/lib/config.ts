@@ -92,6 +92,13 @@ const trackingSchema = z.object({
   capi: z.boolean(),
 });
 
+const fraudSchema = z.object({
+  enabled: z.boolean().default(true),
+  orderLimitPerPhone24h: z.number().int().positive().max(10_000).default(5),
+  orderLimitPerIp24h: z.number().int().positive().max(10_000).default(50),
+  advancePaymentForFlaggedPhones: z.boolean().default(true),
+});
+
 const contactSchema = z.object({
   phone: z.string(),
   email: z.string(),
@@ -110,6 +117,7 @@ export const siteConfigSchema = z.object({
   payments: paymentsSchema,
   social: socialSchema,
   tracking: trackingSchema,
+  fraud: fraudSchema,
   contact: contactSchema,
 });
 

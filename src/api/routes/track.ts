@@ -5,6 +5,7 @@ import { isAllowedOrigin } from '../../lib/http';
 import { findOrderForCustomer } from '../../lib/orders';
 import { normalizePhone } from '../../lib/phone';
 import { countRoundTrips, logQueryCount } from '../../lib/query-log';
+import { hitRateLimit, rateLimitKey } from '../../lib/rate-limit';
 import { trackSchema } from '../../lib/validation/checkout';
 import { badRequest, notFound, serverUnavailable, validationErrorResponse } from '../validation';
 
@@ -21,6 +22,24 @@ trackRoutes.post(
         { ok: false, error: { code: 'bad_origin', message: 'Cross-origin request rejected' } },
         403,
       );
+    }
+
+    const remoteIp = c.req.header('cf-connecting-ip')?.trim() || null;
+    if (remoteIp) {
+      const limit = hitRateLimit(rateLimitKey('track', remoteIp), 10, 60_000);
+      if (!limit.allowed) {
+        c.header('Retry-After', String(limit.retryAfter));
+        return c.json(
+          {
+            ok: false,
+            error: {
+              code: 'rate_limited',
+              message: 'Too many tracking attempts. Please wait a minute and try again.',
+            },
+          },
+          429,
+        );
+      }
     }
 
     const input = c.req.valid('json');

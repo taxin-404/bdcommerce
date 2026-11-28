@@ -184,6 +184,53 @@ const themeJson = JSON.stringify(config.theme).replace(/</g, '\\u003c');
     </section>
 
     <section class="rounded-xl bg-white p-4 shadow-sm">
+      <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.fraud')}</h2>
+      <p class="mt-1 text-sm text-slate-500">{t(locale, 'admin.settings.fraudHint')}</p>
+      <div class="mt-3 space-y-3">
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            id="fraud-enabled"
+            type="checkbox"
+            checked={config.fraud.enabled}
+          />
+          <span>{t(locale, 'admin.settings.fraudEnabled')}</span>
+        </label>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="text-sm">
+            <span class={fieldLabel}>{t(locale, 'admin.settings.fraudPhoneLimit')}</span>
+            <input
+              id="fraud-phone-limit"
+              type="number"
+              min="1"
+              max="10000"
+              value={config.fraud.orderLimitPerPhone24h}
+              class={inputClass}
+            />
+          </label>
+          <label class="text-sm">
+            <span class={fieldLabel}>{t(locale, 'admin.settings.fraudIpLimit')}</span>
+            <input
+              id="fraud-ip-limit"
+              type="number"
+              min="1"
+              max="10000"
+              value={config.fraud.orderLimitPerIp24h}
+              class={inputClass}
+            />
+          </label>
+        </div>
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            id="fraud-advance"
+            type="checkbox"
+            checked={config.fraud.advancePaymentForFlaggedPhones}
+          />
+          <span>{t(locale, 'admin.settings.fraudAdvance')}</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="rounded-xl bg-white p-4 shadow-sm">
       <h2 class="text-lg font-semibold">{t(locale, 'admin.settings.contact')}</h2>
       <div class="mt-3 grid gap-3 sm:grid-cols-2">
         <label class={labelClass}>

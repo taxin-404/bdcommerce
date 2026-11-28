@@ -105,7 +105,7 @@ describe('POST /api/checkout', () => {
       .get() as unknown as { stock: number };
     expect(variant.stock).toBe(8);
     expect(countRows(sqlite, 'order_events')).toBe(1);
-    expect(adapter.roundTrips - before).toBe(4);
+    expect(adapter.roundTrips - before).toBe(3);
   });
 
   it('falls back to the product price when a variant has no override', async () => {
@@ -156,7 +156,7 @@ describe('POST /api/checkout', () => {
 
     const before = adapter.roundTrips;
     await postCheckout(body);
-    expect(adapter.roundTrips - before).toBe(2);
+    expect(adapter.roundTrips - before).toBe(1);
 
     const conflict = await postCheckout({
       ...body,
