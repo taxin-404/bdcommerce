@@ -51,6 +51,7 @@ const money = (amount: number) =>
 const eventTypes = new Set<string>([
   'created',
   'payment_verified',
+  'payment_reverified',
   'payment_rejected',
   'payment_refunded',
   ...ORDER_STATUSES,
@@ -315,6 +316,20 @@ const localeQuery = `?lang=${locale}`;
                     </button>
                   </div>
                 )}
+                {order.payment_status === 'unpaid' &&
+                  order.status !== 'cancelled' &&
+                  order.status !== 'returned' && (
+                    <button
+                      type="button"
+                      class="js-payment mt-3 w-full rounded bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+                      data-action="reverify"
+                      data-order-id={order.id}
+                      data-confirm={t(locale, 'admin.order.reverifyConfirm')}
+                      data-failed={t(locale, 'admin.order.paymentFailed')}
+                    >
+                      {t(locale, 'admin.order.reverifyPayment')}
+                    </button>
+                  )}
                 {order.payment_status === 'paid' && (
                   <button
                     type="button"
@@ -340,6 +355,18 @@ const localeQuery = `?lang=${locale}`;
                 <p class="mt-2 text-sm text-slate-500">{t(locale, 'admin.order.noActions')}</p>
               ) : (
                 <div class="mt-2 space-y-2">
+                  <label class="block text-sm">
+                    <span class="mb-1 block font-medium">
+                      {t(locale, 'admin.order.transitionNote')}
+                    </span>
+                    <textarea
+                      id="transition-note"
+                      maxlength="500"
+                      rows="2"
+                      class="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none"
+                      placeholder={t(locale, 'admin.order.transitionNoteHint')}
+                    ></textarea>
+                  </label>
                   {transitions.map((status: OrderStatus) => (
                     <button
                       type="button"
@@ -397,11 +424,14 @@ const localeQuery = `?lang=${locale}`;
       button.disabled = true;
 
       try {
+        const note = (
+          document.getElementById('transition-note') as HTMLTextAreaElement | null
+        )?.value.trim();
         const response = await fetch(`/api/admin/orders/${button.dataset.orderId}/status`, {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ status: button.dataset.status }),
+          body: JSON.stringify({ status: button.dataset.status, note: note || null }),
         });
         const payload = (await response.json().catch(() => null)) as {
           ok?: boolean;

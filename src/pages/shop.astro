@@ -4,6 +4,7 @@ import StorefrontLayout from '../layouts/StorefrontLayout.astro';
 import ProductCard from '../components/ProductCard.astro';
 import { PRODUCT_CARD_SELECT, type CategoryNavRow, type ProductCardRow } from '../lib/catalog';
 import { t } from '../lib/i18n';
+import { resolveImageBase } from '../lib/image';
 import { pickLocalized, resolveLocale } from '../lib/locale';
 import { toBanglaDigits } from '../lib/money';
 import { countCalls, logQueryCount } from '../lib/query-log';
@@ -161,7 +162,7 @@ const heading = selectedCategory
     : t(locale, 'storefront.allProducts');
 
 const shopName = config.name[locale] || config.name.en;
-const publicUrl = env.R2_PUBLIC_URL ?? '';
+const publicUrl = resolveImageBase(config.images.address, env.R2_PUBLIC_URL);
 ---
 
 <StorefrontLayout

@@ -27,7 +27,7 @@ imageRoutes.get('/*', async (c) => {
 
   return new Response(object.body, {
     headers: {
-      'content-type': 'image/webp',
+      'content-type': object.httpMetadata?.contentType ?? 'application/octet-stream',
       'content-length': String(object.size),
       'cache-control': 'public, max-age=31536000, immutable',
       'x-content-type-options': 'nosniff',

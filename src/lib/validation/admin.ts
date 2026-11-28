@@ -11,7 +11,7 @@ export const orderStatusUpdateSchema = z.object({
 });
 
 export const paymentActionSchema = z.object({
-  action: z.enum(['verify', 'reject']),
+  action: z.enum(['verify', 'reject', 'reverify']),
   note: z.string().trim().max(500).nullable().optional(),
 });
 
@@ -29,43 +29,66 @@ const optionalIsoDate = z
     'Invalid date',
   );
 
+const couponCodeSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(32)
+  .regex(/^[A-Za-z0-9_-]+$/, 'Use letters, digits, dashes, or underscores')
+  .transform((value) => value.toUpperCase());
+
+const couponFieldsShape = {
+  type: z.enum(['percent', 'fixed']),
+  value: z.number().int().positive().max(1_000_000_000),
+  min_subtotal: z.number().int().nonnegative().max(1_000_000_000),
+  max_uses: z.number().int().positive().max(1_000_000).nullable(),
+  starts_at: optionalIsoDate,
+  ends_at: optionalIsoDate,
+  active: z.boolean(),
+};
+
+function refineCoupon(
+  value: {
+    type: 'percent' | 'fixed';
+    value: number;
+    starts_at?: string | null;
+    ends_at?: string | null;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.type === 'percent' && value.value > 100) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['value'],
+      message: 'Percentage coupons must be between 1 and 100',
+    });
+  }
+  if (value.starts_at && value.ends_at && value.ends_at <= value.starts_at) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['ends_at'],
+      message: 'The end date must be after the start date',
+    });
+  }
+}
+
+export const couponFieldsSchema = z
+  .object(couponFieldsShape)
+  .superRefine((value, ctx) => refineCoupon(value, ctx));
+
 export const couponInputSchema = z
   .object({
-    code: z
-      .string()
-      .trim()
-      .min(3)
-      .max(32)
-      .regex(/^[A-Za-z0-9_-]+$/, 'Use letters, digits, dashes, or underscores')
-      .transform((value) => value.toUpperCase()),
-    type: z.enum(['percent', 'fixed']),
-    value: z.number().int().positive().max(1_000_000_000),
-    min_subtotal: z.number().int().nonnegative().max(1_000_000_000).default(0),
-    max_uses: z.number().int().positive().max(1_000_000).nullable().optional(),
-    starts_at: optionalIsoDate,
-    ends_at: optionalIsoDate,
-    active: z.boolean().default(true),
+    code: couponCodeSchema,
+    ...couponFieldsShape,
+    min_subtotal: couponFieldsShape.min_subtotal.default(0),
+    max_uses: couponFieldsShape.max_uses.optional(),
+    active: couponFieldsShape.active.default(true),
   })
-  .superRefine((value, ctx) => {
-    if (value.type === 'percent' && value.value > 100) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['value'],
-        message: 'Percentage coupons must be between 1 and 100',
-      });
-    }
-    if (value.starts_at && value.ends_at && value.ends_at <= value.starts_at) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['ends_at'],
-        message: 'The end date must be after the start date',
-      });
-    }
-  });
+  .superRefine((value, ctx) => refineCoupon(value, ctx));
 
-export const couponActiveSchema = z.object({
-  active: z.boolean(),
-});
+export const couponPatchSchema = z.object(couponFieldsShape).partial();
+
+
 
 export const blocklistInputSchema = z.object({
   phone: z.string().trim().min(1).max(30),

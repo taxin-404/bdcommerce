@@ -23,6 +23,8 @@ describe('mergeConfig', () => {
     const merged = mergeConfig(defaultConfig, {
       shipping: {
         zones: [{ id: 'dhaka', label: { en: 'Dhaka', bn: 'ঢাকা' }, fee: 80 }],
+        districtZones: {},
+        fallbackZone: 'dhaka',
       },
     });
 

@@ -11,6 +11,8 @@ import {
   imageUrl,
   imageVariantKey,
   isWebPBytes,
+  readImageAddress,
+  resolveImageBase,
 } from '../../lib/image';
 import { idParamSchema } from '../../lib/validation/admin';
 import type { AdminEnv } from '../middleware/admin';
@@ -131,8 +133,12 @@ adminImageRoutes.post('/upload', async (c) => {
 
   if (!created) throw new Error('Image insert returned no row');
 
+  const address = await readImageAddress(c.env.DB);
   return c.json(
-    { ok: true, data: imageJson(created, c.env.R2_PUBLIC_URL ?? '') },
+    {
+      ok: true,
+      data: imageJson(created, resolveImageBase(address, c.env.R2_PUBLIC_URL)),
+    },
     201,
   );
 });

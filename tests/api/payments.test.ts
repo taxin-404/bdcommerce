@@ -188,6 +188,79 @@ describe('manual payment verification', () => {
     expect(orderStatusCount(sqlite, orderId, 'payment_verified')).toBe(1);
   });
 
+  it('re-verifies a rejected wallet payment exactly once', async () => {
+    environment = createTestDb();
+    const { db, sqlite } = environment;
+    const orderId = walletOrder();
+
+    const rejected = await changePaymentStatus({ db, orderId, action: 'reject' });
+    expect(rejected).toMatchObject({ ok: true, to: 'unpaid', event: 'payment_rejected' });
+
+    const reverified = await changePaymentStatus({ db, orderId, action: 'reverify' });
+    expect(reverified).toMatchObject({
+      ok: true,
+      from: 'unpaid',
+      to: 'paid',
+      event: 'payment_reverified',
+    });
+    expect(orderStatusCount(sqlite, orderId, 'payment_reverified')).toBe(1);
+
+    const again = await changePaymentStatus({ db, orderId, action: 'reverify' });
+    expect(again).toMatchObject({ ok: false, code: 'invalid_transition' });
+  });
+
+  it('only re-verifies wallet orders and never cancelled or returned orders', async () => {
+    environment = createTestDb();
+    const { db } = environment;
+
+    const cod = insertOrder(environment.sqlite, {
+      paymentMethod: 'cod',
+      paymentStatus: 'unpaid',
+    });
+    expect(await changePaymentStatus({ db, orderId: cod, action: 'reverify' })).toMatchObject({
+      ok: false,
+      code: 'invalid_payment_method',
+    });
+
+    const cancelled = walletOrder({ status: 'cancelled', paymentStatus: 'unpaid' });
+    expect(await changePaymentStatus({ db, orderId: cancelled, action: 'reverify' })).toMatchObject({
+      ok: false,
+      code: 'invalid_transition',
+    });
+
+    const returned = walletOrder({ status: 'returned', paymentStatus: 'unpaid' });
+    expect(await changePaymentStatus({ db, orderId: returned, action: 'reverify' })).toMatchObject({
+      ok: false,
+      code: 'invalid_transition',
+    });
+  });
+
+  it('does not use re-verify to skip a pending verification', async () => {
+    environment = createTestDb();
+    const { db } = environment;
+    const orderId = walletOrder();
+    expect(await changePaymentStatus({ db, orderId, action: 'reverify' })).toMatchObject({
+      ok: false,
+      code: 'invalid_transition',
+    });
+  });
+
+  it('lets only one concurrent re-verification win', async () => {
+    environment = createTestDb();
+    const { db, sqlite } = environment;
+    const orderId = walletOrder();
+    await changePaymentStatus({ db, orderId, action: 'reject' });
+
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => changePaymentStatus({ db, orderId, action: 'reverify' })),
+    );
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(
+      results.filter((result) => !result.ok && result.code === 'status_conflict'),
+    ).toHaveLength(4);
+    expect(orderStatusCount(sqlite, orderId, 'payment_reverified')).toBe(1);
+  });
+
   it('keeps COD delivered → paid working', async () => {
     environment = createTestDb();
     const { db } = environment;

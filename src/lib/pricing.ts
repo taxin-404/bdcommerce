@@ -252,7 +252,7 @@ export async function priceCart(
   let shippingFee: number | null = null;
 
   if (district) {
-    shippingZone = shippingZoneForDistrict(config.shipping.zones, district);
+    shippingZone = shippingZoneForDistrict(config.shipping, district);
     freeShipping =
       config.shipping.freeShippingOver !== null &&
       subtotal >= config.shipping.freeShippingOver;

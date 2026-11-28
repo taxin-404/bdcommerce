@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import StorefrontLayout from '../layouts/StorefrontLayout.astro';
 import HomeSections from '../components/home/HomeSections.astro';
 import { PRODUCT_CARD_SELECT, type CategoryNavRow, type ProductCardRow } from '../lib/catalog';
+import { resolveImageBase } from '../lib/image';
 import { resolveLocale } from '../lib/locale';
 import { countCalls, logQueryCount } from '../lib/query-log';
 import { loadStorefront } from '../lib/storefront';
@@ -59,7 +60,7 @@ logQueryCount('home', count());
 
 const shopName = config.name[locale] || config.name.en;
 const tagline = config.tagline[locale] || config.tagline.en;
-const publicUrl = env.R2_PUBLIC_URL ?? '';
+const publicUrl = resolveImageBase(config.images.address, env.R2_PUBLIC_URL);
 ---
 
 <StorefrontLayout

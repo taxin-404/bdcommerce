@@ -30,6 +30,8 @@ describe('settings merge', () => {
       theme: { ...defaultConfig.theme, preset: 'dark' },
       shipping: {
         zones: defaultConfig.shipping.zones.map((zone) => ({ ...zone, fee: 99 })),
+        districtZones: defaultConfig.shipping.districtZones,
+        fallbackZone: defaultConfig.shipping.fallbackZone,
         freeShippingOver: 2000,
       },
     });

@@ -49,6 +49,24 @@ const money = (amount: number) =>
   });
 const couponValue = (type: string, value: number) =>
   type === 'percent' ? `${value}%` : money(value);
+const dhakaDateInput = (iso: string | null): string => {
+  if (!iso) return '';
+  const time = Date.parse(iso);
+  if (Number.isNaN(time)) return '';
+  return new Date(time + 6 * 60 * 60 * 1000).toISOString().slice(0, 10);
+};
+const couponEditJson = (coupon: (typeof coupons)[number]) =>
+  JSON.stringify({
+    code: coupon.code,
+    type: coupon.type,
+    value: coupon.value,
+    min_subtotal: coupon.min_subtotal,
+    max_uses: coupon.max_uses,
+    used: coupon.used,
+    starts_at: dhakaDateInput(coupon.starts_at),
+    ends_at: dhakaDateInput(coupon.ends_at),
+    active: Boolean(coupon.active),
+  }).replace(/</g, '\\u003c');
 const inputClass =
   'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-200';
 ---
@@ -161,21 +179,92 @@ const inputClass =
               </button>
             </td>
             <td class="px-3 py-2 text-right">
-              <button
-                type="button"
-                class="js-coupon-delete rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
-                data-code={coupon.code}
-                data-confirm={t(locale, 'admin.coupon.deleteConfirm')}
-                data-failed={t(locale, 'admin.coupon.deleteFailed')}
-              >
-                {t(locale, 'admin.coupon.delete')}
-              </button>
+              <div class="flex flex-wrap justify-end gap-1">
+                <button
+                  type="button"
+                  class="js-coupon-edit rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                  data-coupon={couponEditJson(coupon)}
+                >
+                  {t(locale, 'admin.coupon.edit')}
+                </button>
+                <button
+                  type="button"
+                  class="js-coupon-delete rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                  data-code={coupon.code}
+                  data-confirm={t(locale, 'admin.coupon.deleteConfirm')}
+                  data-failed={t(locale, 'admin.coupon.deleteFailed')}
+                >
+                  {t(locale, 'admin.coupon.delete')}
+                </button>
+              </div>
             </td>
           </tr>
         ))}
       </tbody>
     </table>
   </section>
+
+  <form
+    id="coupon-edit-form"
+    class="mt-4 hidden rounded-xl bg-white p-4 shadow-sm"
+    data-failed={t(locale, 'admin.coupon.saveFailed')}
+    data-used-hint={t(locale, 'admin.coupon.maxUsesBelowUsed')}
+  >
+    <h2 class="text-lg font-semibold">{t(locale, 'admin.coupon.editTitle')}</h2>
+    <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <label class="text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.coupon.code')}</span>
+        <input name="code" readonly class={`${inputClass} bg-slate-50 font-mono`} />
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.coupon.type')}</span>
+        <select name="type" class={inputClass}>
+          <option value="percent">{t(locale, 'admin.coupon.percent')}</option>
+          <option value="fixed">{t(locale, 'admin.coupon.fixed')}</option>
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.coupon.value')}</span>
+        <input name="value" type="number" min="1" required class={inputClass} />
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.coupon.minSubtotal')}</span>
+        <input name="min_subtotal" type="number" min="0" class={inputClass} />
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.coupon.maxUses')}</span>
+        <input name="max_uses" type="number" min="1" class={inputClass} />
+      </label>
+      <label class="flex items-end gap-2 pb-2 text-sm">
+        <input name="active" type="checkbox" />
+        <span>{t(locale, 'admin.coupon.active')}</span>
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.coupon.starts')}</span>
+        <input name="starts_at" type="date" class={inputClass} />
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.coupon.ends')}</span>
+        <input name="ends_at" type="date" class={inputClass} />
+      </label>
+    </div>
+    <div class="mt-4 flex flex-wrap gap-2">
+      <button
+        type="submit"
+        class="rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+      >
+        {t(locale, 'admin.coupon.saveChanges')}
+      </button>
+      <button
+        id="coupon-edit-cancel"
+        type="button"
+        class="rounded border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+      >
+        {t(locale, 'common.cancel')}
+      </button>
+    </div>
+    <p id="coupon-edit-status" class="mt-2 hidden text-sm" aria-live="polite"></p>
+  </form>
 </AdminLayout>
 
 <script>

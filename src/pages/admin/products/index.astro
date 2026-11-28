@@ -4,7 +4,7 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { resolveAdminLocale } from '../../../lib/admin-locale';
 import { loadConfig } from '../../../lib/config';
 import { t } from '../../../lib/i18n';
-import { imageUrl } from '../../../lib/image';
+import { imageUrl, resolveImageBase } from '../../../lib/image';
 import { formatBdt } from '../../../lib/money';
 import { buildFtsQuery } from '../../../lib/search';
 
@@ -133,7 +133,11 @@ const { results: products } = await env.DB.prepare(
                   <div class="flex items-center gap-3">
                     {product.image_key ? (
                       <img
-                        src={imageUrl(product.image_key, 'thumb', env.R2_PUBLIC_URL ?? '')}
+                        src={imageUrl(
+                          product.image_key,
+                          'thumb',
+                          resolveImageBase(config.images.address, env.R2_PUBLIC_URL),
+                        )}
                         alt=""
                         width="40"
                         height="40"

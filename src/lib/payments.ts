@@ -1,6 +1,6 @@
 import { errorMessage, isD1Unavailable } from './db-errors';
 
-export type PaymentAction = 'verify' | 'reject';
+export type PaymentAction = 'verify' | 'reject' | 'reverify';
 
 export type PaymentChangeCode =
   | 'not_found'
@@ -16,7 +16,11 @@ export type PaymentChangeResult =
       action: PaymentAction;
       from: string;
       to: 'paid' | 'unpaid' | 'refunded';
-      event: 'payment_verified' | 'payment_rejected' | 'payment_refunded';
+      event:
+        | 'payment_verified'
+        | 'payment_reverified'
+        | 'payment_rejected'
+        | 'payment_refunded';
     }
   | { ok: false; code: PaymentChangeCode; currentStatus?: string };
 
@@ -33,13 +37,24 @@ function isGuardError(message: string): boolean {
 
 type PaymentTarget = {
   to: 'paid' | 'unpaid' | 'refunded';
-  event: 'payment_verified' | 'payment_rejected' | 'payment_refunded';
+  event:
+    | 'payment_verified'
+    | 'payment_reverified'
+    | 'payment_rejected'
+    | 'payment_refunded';
 };
 
 function targetFor(action: PaymentAction, currentStatus: string): PaymentTarget | null {
   if (action === 'verify') {
     return currentStatus === 'pending_verification'
       ? { to: 'paid', event: 'payment_verified' }
+      : null;
+  }
+  if (action === 'reverify') {
+    // A rejected wallet payment is the only way a wallet order reaches
+    // `unpaid`: wallet orders are created as `pending_verification`.
+    return currentStatus === 'unpaid'
+      ? { to: 'paid', event: 'payment_reverified' }
       : null;
   }
   if (currentStatus === 'pending_verification') {
@@ -141,6 +156,6 @@ export async function changePaymentStatus(input: {
     action,
     from: current.payment_status,
     to: target.to,
-    event: target.event as 'payment_verified' | 'payment_rejected' | 'payment_refunded',
+    event: target.event,
   };
 }

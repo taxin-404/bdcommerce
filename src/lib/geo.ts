@@ -87,18 +87,31 @@ export function localizedGeoName(
 }
 
 /**
- * Delivery zone comes from the district, never from the client. "Inside Dhaka"
- * means Dhaka district; every other district uses the outside-Dhaka zone.
+ * Delivery zone comes from the district, never from the client. The mapping
+ * and fallback are editable in Settings; an unknown district always resolves
+ * to the fallback zone, so every district has a fee.
  */
 export function shippingZoneForDistrict<T extends { id: string }>(
-  zones: readonly T[],
+  shipping: {
+    zones: readonly T[];
+    districtZones: Record<string, string>;
+    fallbackZone: string;
+  },
   district: string,
 ): T {
-  const insideDhaka = key(district) === 'dhaka';
-  const preferred = insideDhaka ? 'dhaka' : 'outside';
+  const wanted = key(district);
+  let preferred: string | undefined;
+  for (const [name, zoneId] of Object.entries(shipping.districtZones)) {
+    if (key(name) === wanted) {
+      preferred = zoneId;
+      break;
+    }
+  }
+
   const zone =
-    zones.find((candidate) => candidate.id === preferred) ??
-    (insideDhaka ? zones[0] : zones[zones.length - 1]);
+    shipping.zones.find((candidate) => candidate.id === preferred) ??
+    shipping.zones.find((candidate) => candidate.id === shipping.fallbackZone) ??
+    shipping.zones[0];
   if (!zone) throw new Error('At least one shipping zone is required');
   return zone;
 }

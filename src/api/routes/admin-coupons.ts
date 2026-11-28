@@ -1,8 +1,9 @@
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import {
-  couponActiveSchema,
+  couponFieldsSchema,
   couponInputSchema,
+  couponPatchSchema,
 } from '../../lib/validation/admin';
 import type { AdminEnv } from '../middleware/admin';
 import { notFound, validationErrorResponse } from '../validation';
@@ -88,20 +89,98 @@ adminCouponRoutes.post(
 
 adminCouponRoutes.patch(
   '/:code',
-  zValidator('json', couponActiveSchema, (result, c) => {
+  zValidator('json', couponPatchSchema, (result, c) => {
     if (!result.success) return validationErrorResponse(c, result.error);
   }),
   async (c) => {
     const code = (c.req.param('code') ?? '').toUpperCase();
-    const { active } = c.req.valid('json');
-    const result = await c.env.DB.prepare('UPDATE coupons SET active = ? WHERE code = ?')
-      .bind(active ? 1 : 0, code)
+    const input = c.req.valid('json');
+
+    const current = await c.env.DB.prepare(
+      `SELECT code, type, value, min_subtotal, max_uses, used, starts_at, ends_at, active
+         FROM coupons WHERE code = ? LIMIT 1`,
+    )
+      .bind(code)
+      .first<CouponListRow>();
+    if (!current) return notFound(c, 'coupon_not_found', 'Coupon not found');
+
+    const merged = couponFieldsSchema.safeParse({
+      type: input.type ?? current.type,
+      value: input.value ?? current.value,
+      min_subtotal: input.min_subtotal ?? current.min_subtotal,
+      max_uses:
+        input.max_uses !== undefined ? input.max_uses : current.max_uses,
+      starts_at: input.starts_at !== undefined ? input.starts_at : current.starts_at,
+      ends_at: input.ends_at !== undefined ? input.ends_at : current.ends_at,
+      active: input.active !== undefined ? input.active : Boolean(current.active),
+    });
+    if (!merged.success) return validationErrorResponse(c, merged.error);
+
+    if (merged.data.max_uses !== null && merged.data.max_uses < current.used) {
+      return c.json(
+        {
+          ok: false,
+          error: {
+            code: 'coupon_max_uses_below_used',
+            message: `This coupon has already been used ${current.used} times`,
+          },
+        },
+        409,
+      );
+    }
+
+    const updated = await c.env.DB.prepare(
+      `UPDATE coupons
+          SET type = ?, value = ?, min_subtotal = ?, max_uses = ?,
+              starts_at = ?, ends_at = ?, active = ?
+        WHERE code = ?
+          AND (? IS NULL OR ? >= used)`,
+    )
+      .bind(
+        merged.data.type,
+        merged.data.value,
+        merged.data.min_subtotal,
+        merged.data.max_uses,
+        merged.data.starts_at,
+        merged.data.ends_at,
+        merged.data.active ? 1 : 0,
+        code,
+        merged.data.max_uses,
+        merged.data.max_uses,
+      )
       .run();
 
-    if (!result.meta.changes) {
-      return notFound(c, 'coupon_not_found', 'Coupon not found');
+    if (!updated.meta.changes) {
+      const stillExists = await c.env.DB.prepare('SELECT code FROM coupons WHERE code = ? LIMIT 1')
+        .bind(code)
+        .first<{ code: string }>();
+      if (!stillExists) return notFound(c, 'coupon_not_found', 'Coupon not found');
+      return c.json(
+        {
+          ok: false,
+          error: {
+            code: 'coupon_max_uses_below_used',
+            message: 'Maximum uses cannot be lower than the current used count',
+          },
+        },
+        409,
+      );
     }
-    return c.json({ ok: true, data: { code, active } });
+
+    return c.json({
+      ok: true,
+      data: {
+        code,
+        type: merged.data.type,
+        value: merged.data.value,
+        min_subtotal: merged.data.min_subtotal,
+        max_uses: merged.data.max_uses,
+        used: current.used,
+        starts_at: merged.data.starts_at,
+        ends_at: merged.data.ends_at,
+        active: merged.data.active,
+      },
+    });
   },
 );
 

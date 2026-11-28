@@ -21,7 +21,7 @@ admin orders + dashboard + printing, manual bKash/Nagad + coupons + settings + s
 ### 0. Env cleanup (check `git log` first; skip if already merged)
 Only ADMIN_PASSPHRASE uncommented in .dev.vars.example. Turnstile and Steadfast keys commented out. README "Optional settings" table.
 
-### 8A. Launch-critical
+### 8A. Launch-critical — DONE (branch `phase-8a`)
 - Manual bKash/Nagad checkout UX: "Copy number" and "Copy amount" buttons, mobile dial link (verify USSD codes against current provider docs),
   optional owner-uploaded QR image (R2), Bangla/English steps for personal vs merchant wallets, clear "not confirmed until verified" notice.
 - "Image address (R2 public URL)" field in Admin > Settings, stored in the settings table, takes priority over the R2_PUBLIC_URL variable.
@@ -33,6 +33,7 @@ Only ADMIN_PASSPHRASE uncommented in .dev.vars.example. Turnstile and Steadfast 
 - Full coupon edit (value, date window, max uses).
 - Decide how to handle stock restores for deleted products/variants.
 - Turnstile script load failure: friendly retry/fallback.
+- Deferred: Nagad dial link (no official USSD source found); QR orphan cleanup; verify the image-address Test against a real public R2 URL.
 
 ### 8B. Polish, SEO, reach
 - Bangla server-side error messages, accessibility fixes, Bangla digits, free-shipping progress hint.
@@ -65,8 +66,8 @@ k6 load tests against a staging deployment only, README, owner guide (Bangla and
 
 ## Before any real shop goes live (checklist)
 - [ ] Steadfast verified with real merchant credentials (test parcel created and refreshed).
-- [ ] District-to-zone mapping is editable and correct for the shop's delivery areas.
-- [ ] Paid-only revenue metric exists so cash collected is not confused with placed orders.
+- [x] District-to-zone mapping is editable (verify it is correct for the shop's delivery areas).
+- [x] Paid-only revenue metric exists so cash collected is not confused with placed orders.
 - [ ] Turnstile decision made (enabled or deliberately off) and fraud limits reviewed.
 - [ ] Strong ADMIN_PASSPHRASE set (16+ random characters).
 - [ ] GUI test passed on the deployed shop: setup wizard, image upload, COD and bKash checkout, order lifecycle.

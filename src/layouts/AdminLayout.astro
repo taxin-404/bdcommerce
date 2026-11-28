@@ -2,6 +2,7 @@
 import '../styles/global.css';
 import { env } from 'cloudflare:workers';
 import { t } from '../lib/i18n';
+import { readImageAddress } from '../lib/image';
 import type { AdminLocale } from '../lib/admin-locale';
 
 interface Props {
@@ -23,7 +24,8 @@ interface Props {
 const { title, locale, current } = Astro.props;
 const otherLocale: AdminLocale = locale === 'bn' ? 'en' : 'bn';
 const langHref = `${Astro.url.pathname}?lang=${otherLocale}`;
-const showR2Banner = !env.R2_PUBLIC_URL?.trim();
+const showR2Banner =
+  !env.R2_PUBLIC_URL?.trim() && !(await readImageAddress(env.DB)).trim();
 
 const errorCodes = [
   'duplicateSku',
@@ -72,6 +74,10 @@ const errorCodes = [
   'courier_invalid_response',
   'phone_not_blocked',
   'phone_not_flagged',
+  'product_in_active_orders',
+  'variant_in_active_orders',
+  'coupon_max_uses_below_used',
+  'invalid_wallet',
 ] as const;
 const adminErrors = Object.fromEntries(
   errorCodes.map((code) => [code, t(locale, `admin.errors.${code}`)]),

@@ -20,6 +20,74 @@ export const safePathOrUrl = z
 
 export const themePresetSchema = z.enum(['clean', 'bold', 'soft', 'dark']);
 
+const PRIVATE_HOST_SUFFIXES = ['.localhost', '.local', '.internal'];
+
+function isPrivateIpv4(hostname: string): boolean {
+  const parts = hostname.split('.');
+  if (parts.length !== 4) return false;
+  const octets = parts.map((part) => Number(part));
+  if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return false;
+  }
+  const [a, b] = octets;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
+function isPrivateHost(hostname: string): boolean {
+  // A trailing dot is the same DNS name; strip it before the local checks.
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  if (host === 'localhost' || host === '0.0.0.0' || host === '[::1]' || host === '::1') {
+    return true;
+  }
+  if (host.includes(':')) {
+    const ipv6 = host.replace(/^\[|\]$/g, '');
+    if (
+      ipv6 === '::' ||
+      ipv6.startsWith('::ffff:') ||
+      ipv6.startsWith('fc') ||
+      ipv6.startsWith('fd') ||
+      ipv6.startsWith('fe80')
+    ) {
+      return true;
+    }
+  }
+  return (
+    isPrivateIpv4(host) ||
+    PRIVATE_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))
+  );
+}
+
+/** A public https base URL for R2 images. No trailing slash, no private hosts. */
+export const imageAddressSchema = z
+  .string()
+  .max(300)
+  .refine((value) => value === '' || isPublicImageAddress(value), {
+    message: 'Use an https image address without a trailing slash',
+  });
+
+export function isPublicImageAddress(value: string): boolean {
+  if (!value || value !== value.trim() || value.endsWith('/')) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:') return false;
+  if (parsed.username || parsed.password) return false;
+  if (parsed.search || parsed.hash) return false;
+  if (!parsed.hostname.includes('.') && !parsed.hostname.includes(':')) return false;
+  return !isPrivateHost(parsed.hostname);
+}
+
 const themeSchema = z.object({
   preset: themePresetSchema.default('clean'),
   primary: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Expected a 6-digit hex colour'),
@@ -54,16 +122,76 @@ const featuresSchema = z.object({
   reviews: z.boolean(),
 });
 
-const shippingZoneSchema = z.object({
-  id: z.string().min(1),
+export const shippingZoneSchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9 _-]*$/, 'Zone ids use letters, digits, spaces, - or _'),
   label: localizedTextSchema,
   fee: z.number().int().nonnegative().max(1_000_000_000),
 });
 
-const shippingSchema = z.object({
-  zones: z.array(shippingZoneSchema).min(1),
-  freeShippingOver: z.number().int().nonnegative().max(1_000_000_000).nullable(),
-});
+const shippingObjectSchema = z
+  .object({
+    zones: z.array(shippingZoneSchema).min(1).max(50),
+    districtZones: z.record(z.string().min(1).max(80), z.string().min(1).max(40)),
+    fallbackZone: z.string().min(1).max(40),
+    freeShippingOver: z.number().int().nonnegative().max(1_000_000_000).nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const ids = new Set(value.zones.map((zone) => zone.id));
+    if (ids.size !== value.zones.length) {
+      ctx.addIssue({ code: 'custom', path: ['zones'], message: 'Zone ids must be unique' });
+    }
+    if (!ids.has(value.fallbackZone)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fallbackZone'],
+        message: 'The fallback zone must be one of the zones',
+      });
+    }
+    for (const [district, zoneId] of Object.entries(value.districtZones)) {
+      if (!ids.has(zoneId)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['districtZones', district],
+          message: 'Every district must map to an existing zone',
+        });
+      }
+    }
+  });
+
+/**
+ * Forks can pull template updates without editing site.config.ts: an old
+ * shipping object without fallbackZone defaults to its first zone. Explicit
+ * invalid values from Settings are still rejected by the object schema.
+ */
+const shippingSchema = z.preprocess((value) => {
+  if (!isPlainObject(value)) return value;
+
+  const next = { ...value };
+  const zones = Array.isArray(next.zones)
+    ? (next.zones as Array<{ id?: unknown }>)
+    : [];
+  const ids = zones
+    .map((zone) => zone?.id)
+    .filter((id): id is string => typeof id === 'string');
+
+  if (!isPlainObject(next.districtZones)) {
+    // Pre-8A resolved Dhaka district to the `dhaka` zone (or the first zone)
+    // and every other district to the `outside` zone (or the last zone).
+    const dhakaZone = ids.includes('dhaka') ? 'dhaka' : ids[0];
+    next.districtZones = dhakaZone ? { Dhaka: dhakaZone } : {};
+  }
+  if (typeof next.fallbackZone !== 'string') {
+    next.fallbackZone = ids.includes('outside')
+      ? 'outside'
+      : (ids[ids.length - 1] ?? '');
+  }
+
+  return next;
+}, shippingObjectSchema);
 
 const paymentMethodSchema = z.object({
   enabled: z.boolean(),
@@ -72,6 +200,7 @@ const paymentMethodSchema = z.object({
 const walletPaymentSchema = paymentMethodSchema.extend({
   number: z.string(),
   type: z.enum(['personal', 'merchant']),
+  qr: safePathOrUrl.default(''),
 });
 
 const paymentsSchema = z.object({
@@ -105,6 +234,14 @@ const contactSchema = z.object({
   address: localizedTextSchema,
 });
 
+const imagesSchema = z.object({
+  address: imageAddressSchema.default(''),
+});
+
+const inventorySchema = z.object({
+  lowStockThreshold: z.number().int().min(1).max(10_000).default(5),
+});
+
 export const siteConfigSchema = z.object({
   name: localizedTextSchema,
   tagline: localizedTextSchema,
@@ -115,6 +252,8 @@ export const siteConfigSchema = z.object({
   features: featuresSchema,
   shipping: shippingSchema,
   payments: paymentsSchema,
+  images: imagesSchema,
+  inventory: inventorySchema,
   social: socialSchema,
   tracking: trackingSchema,
   fraud: fraudSchema,
@@ -142,8 +281,25 @@ function deepMerge(base: unknown, override: unknown): unknown {
   return override;
 }
 
+/**
+ * A fork can keep an old site.config.ts after pulling this template. Fill the
+ * new sections here instead of putting schema defaults on the top-level
+ * fields, because `.partial()` would otherwise leak those defaults into every
+ * settings PATCH and overwrite owner data.
+ */
+function normalizeLegacyBase(base: SiteConfig): Record<string, unknown> {
+  const raw = base as unknown as Record<string, unknown>;
+  return {
+    ...raw,
+    images: isPlainObject(raw.images) ? raw.images : { address: '' },
+    inventory: isPlainObject(raw.inventory)
+      ? raw.inventory
+      : { lowStockThreshold: 5 },
+  };
+}
+
 export function mergeConfig(base: SiteConfig, overrides: Record<string, unknown>): SiteConfig {
-  return siteConfigSchema.parse(deepMerge(base, overrides));
+  return siteConfigSchema.parse(deepMerge(normalizeLegacyBase(base), overrides));
 }
 
 function parseOverride(row: {
