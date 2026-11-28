@@ -226,11 +226,15 @@ export default function CheckoutForm({
       } | null;
 
       if (!response.ok || !payload?.ok || !payload.data) {
-        setCouponError(
-          payload?.error?.code
-            ? couponMessage(payload.error.code)
-            : t(locale, 'checkout.couponInvalid'),
-        );
+        if (payload?.error?.code === 'rate_limited') {
+          setCouponError(t(locale, 'checkout.rateLimited'));
+        } else {
+          setCouponError(
+            payload?.error?.code
+              ? couponMessage(payload.error.code)
+              : t(locale, 'checkout.couponInvalid'),
+          );
+        }
         return;
       }
 
@@ -404,6 +408,18 @@ export default function CheckoutForm({
         setError(t(locale, 'checkout.geoInvalid'));
       } else if (code === 'payment_unavailable') {
         setError(t(locale, 'checkout.paymentUnavailable'));
+      } else if (code === 'phone_blocked') {
+        setError(t(locale, 'checkout.phoneBlocked'));
+      } else if (code === 'order_rate_limited') {
+        setError(t(locale, 'checkout.orderRateLimited'));
+      } else if (code === 'rate_limited') {
+        setError(t(locale, 'checkout.tooManyRequests'));
+      } else if (code === 'advance_payment_required') {
+        setError(t(locale, 'checkout.advancePaymentRequired'));
+        if (payments.bkash.enabled) setPaymentMethod('bkash');
+        else if (payments.nagad.enabled) setPaymentMethod('nagad');
+      } else if (code === 'duplicate_payment_trx') {
+        setError(t(locale, 'checkout.duplicateTrx'));
       } else if (code === 'invalid_payment_sender') {
         setError(t(locale, 'checkout.senderPhoneInvalid'));
       } else if (code.startsWith('coupon_')) {

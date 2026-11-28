@@ -107,7 +107,7 @@ describe('checkout coupon usage', () => {
     );
 
     expect(response.status).toBe(201);
-    expect(environment.adapter.roundTrips - before).toBe(4);
+    expect(environment.adapter.roundTrips - before).toBe(3);
     expect(payload.ok).toBe(true);
     const order = sqlite
       .prepare('SELECT subtotal, discount, total, coupon_code FROM orders LIMIT 1')

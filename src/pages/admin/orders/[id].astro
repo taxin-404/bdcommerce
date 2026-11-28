@@ -1,9 +1,11 @@
 ---
 import { env } from 'cloudflare:workers';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import CourierPanel from '../../../components/admin/CourierPanel.astro';
 import { resolveAdminLocale } from '../../../lib/admin-locale';
 import { loadAdminOrderDetail } from '../../../lib/admin-order-detail';
 import { loadConfig } from '../../../lib/config';
+import { isCourierConfigured } from '../../../lib/courier';
 import { formatDhakaDateTime } from '../../../lib/datetime';
 import { formatBdt } from '../../../lib/money';
 import { nextStatuses, ORDER_STATUSES, type OrderStatus } from '../../../lib/order-status';
@@ -34,6 +36,9 @@ const order = detail?.order ?? null;
 const items = detail?.items ?? [];
 const events = detail?.events ?? [];
 const blocked = detail?.blocked ?? false;
+const flagged = detail?.advancePaymentRequired ?? false;
+const duplicateTrxOrders = detail?.duplicateTrxOrders ?? [];
+const courierConfigured = isCourierConfigured(env);
 const transitions = order ? nextStatuses(order.status) : [];
 
 const money = (amount: number) =>
@@ -107,6 +112,29 @@ const localeQuery = `?lang=${locale}`;
             </a>
           </div>
         </div>
+
+        {duplicateTrxOrders.length > 0 && (
+          <div class="mb-4 rounded-xl border border-rose-300 bg-rose-50 p-4">
+            <h2 class="text-sm font-semibold text-rose-900">
+              {t(locale, 'admin.order.duplicateTrxTitle')}
+            </h2>
+            <p class="mt-1 text-sm text-rose-800">
+              {t(locale, 'admin.order.duplicateTrxText')}
+            </p>
+            <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              {duplicateTrxOrders.map((other) => (
+                <li>
+                  <a
+                    href={`/admin/orders/${other.id}${localeQuery}`}
+                    class="font-mono text-rose-900 underline"
+                  >
+                    {other.number}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div class="grid gap-4 lg:grid-cols-3">
           <section class="rounded-xl bg-white p-4 shadow-sm lg:col-span-2">
@@ -219,6 +247,29 @@ const localeQuery = `?lang=${locale}`;
               ) : (
                 <p class="mt-3 text-xs text-rose-700">{t(locale, 'admin.order.blockedHint')}</p>
               )}
+
+              {flagged && (
+                <p class="mt-3 rounded bg-amber-50 p-2 text-xs text-amber-900">
+                  {t(locale, 'admin.order.advanceRequired')}
+                </p>
+              )}
+              <button
+                type="button"
+                class="js-flag mt-3 w-full rounded border border-amber-300 px-3 py-2 text-sm text-amber-800 hover:bg-amber-50"
+                data-order-id={order.id}
+                data-flagged={flagged ? 'true' : 'false'}
+                data-confirm={
+                  flagged
+                    ? t(locale, 'admin.order.flagClearConfirm')
+                    : t(locale, 'admin.order.flagConfirm')
+                }
+                data-reason={t(locale, 'admin.order.flagReason')}
+                data-failed={t(locale, 'admin.order.flagFailed')}
+              >
+                {flagged
+                  ? t(locale, 'admin.order.flagClearAction')
+                  : t(locale, 'admin.order.flagAction')}
+              </button>
             </div>
 
             {(order.payment_method === 'bkash' || order.payment_method === 'nagad') && (
@@ -278,6 +329,8 @@ const localeQuery = `?lang=${locale}`;
                 )}
               </div>
             )}
+
+            {courierConfigured && <CourierPanel order={order} locale={locale} />}
 
             <div class="rounded-xl bg-white p-4 shadow-sm">
               <h2 class="text-sm font-semibold text-slate-600">
@@ -433,5 +486,85 @@ const localeQuery = `?lang=${locale}`;
       window.alert(blockButton.dataset.failed ?? '');
       blockButton.disabled = false;
     }
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.js-flag').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!window.confirm(button.dataset.confirm ?? '')) return;
+      const flagged = button.dataset.flagged === 'true';
+      let reason = '';
+      if (!flagged) {
+        const value = window.prompt(button.dataset.reason ?? '');
+        if (value === null) return;
+        reason = value;
+      }
+      button.disabled = true;
+
+      try {
+        const response = await fetch(
+          `/api/admin/orders/${button.dataset.orderId}/phone-flag`,
+          {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ flagged: !flagged, reason }),
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: { code?: string };
+        } | null;
+
+        if (!response.ok || !payload?.ok) {
+          window.alert(adminErrorMessage(payload?.error?.code, button.dataset.failed ?? ''));
+          button.disabled = false;
+          return;
+        }
+
+        window.location.reload();
+      } catch {
+        window.alert(button.dataset.failed ?? '');
+        button.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.js-courier').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (
+        button.dataset.action === 'send' &&
+        !window.confirm(button.dataset.confirm ?? '')
+      ) {
+        return;
+      }
+      button.disabled = true;
+
+      try {
+        const response = await fetch(
+          `/api/admin/orders/${button.dataset.orderId}/courier`,
+          {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: button.dataset.action }),
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: { code?: string };
+        } | null;
+
+        if (!response.ok || !payload?.ok) {
+          window.alert(adminErrorMessage(payload?.error?.code, button.dataset.failed ?? ''));
+          button.disabled = false;
+          return;
+        }
+
+        window.location.reload();
+      } catch {
+        window.alert(button.dataset.failed ?? '');
+        button.disabled = false;
+      }
+    });
   });
 </script>

@@ -1,0 +1,207 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { resolveAdminLocale } from '../../lib/admin-locale';
+import { listBlocklist, listPhoneFlags } from '../../lib/blocklist';
+import { formatDhakaDateTime } from '../../lib/datetime';
+import { t } from '../../lib/i18n';
+import { countRoundTrips, logQueryCount } from '../../lib/query-log';
+
+const requested = Astro.url.searchParams.get('lang');
+if (requested === 'bn' || requested === 'en') {
+  Astro.cookies.set('admin_locale', requested, {
+    path: '/',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+  });
+}
+const locale = resolveAdminLocale(requested, Astro.cookies.get('admin_locale')?.value);
+
+const { value: db, count } = countRoundTrips(env.DB);
+const [blocked, flagged] = await Promise.all([listBlocklist(db), listPhoneFlags(db)]);
+logQueryCount('admin/blocklist', count());
+
+const inputClass =
+  'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-200';
+---
+
+<AdminLayout title={t(locale, 'admin.blocklistPage.title')} locale={locale} current="blocklist">
+  <div class="mb-5">
+    <h1 class="text-2xl font-semibold">{t(locale, 'admin.blocklistPage.title')}</h1>
+    <p class="mt-1 text-sm text-slate-500">{t(locale, 'admin.blocklistPage.hint')}</p>
+  </div>
+
+  <form
+    id="blocklist-form"
+    class="rounded-xl bg-white p-4 shadow-sm"
+    data-failed={t(locale, 'admin.blocklistPage.addFailed')}
+  >
+    <h2 class="text-lg font-semibold">{t(locale, 'admin.blocklistPage.addTitle')}</h2>
+    <div class="mt-3 grid gap-3 sm:grid-cols-[1fr_2fr_auto]">
+      <label class="text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.blocklistPage.phone')}</span>
+        <input
+          name="phone"
+          required
+          inputmode="tel"
+          autocomplete="off"
+          placeholder="01XXXXXXXXX"
+          class={inputClass}
+        />
+      </label>
+      <label class="text-sm">
+        <span class="mb-1 block font-medium">{t(locale, 'admin.blocklistPage.reason')}</span>
+        <input
+          name="reason"
+          maxlength="200"
+          placeholder={t(locale, 'admin.blocklistPage.reasonPlaceholder')}
+          class={inputClass}
+        />
+      </label>
+      <button
+        type="submit"
+        class="self-end rounded bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+      >
+        {t(locale, 'admin.blocklistPage.addAction')}
+      </button>
+    </div>
+  </form>
+
+  <section class="mt-4 rounded-xl bg-white p-4 shadow-sm">
+    <h2 class="text-lg font-semibold">{t(locale, 'admin.blocklistPage.blockedTitle')}</h2>
+    {blocked.length === 0 ? (
+      <p class="mt-2 text-sm text-slate-500">{t(locale, 'admin.blocklistPage.empty')}</p>
+    ) : (
+      <ul class="mt-3 divide-y divide-slate-100">
+        {blocked.map((row) => (
+          <li class="flex flex-wrap items-center justify-between gap-2 py-2">
+            <div>
+              <p class="font-mono text-sm">{row.phone}</p>
+              {row.reason && <p class="text-xs text-slate-500">{row.reason}</p>}
+              <p class="text-xs text-slate-400">
+                {formatDhakaDateTime(row.created_at, locale)}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="js-unblock rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+              data-phone={row.phone}
+              data-confirm={t(locale, 'admin.blocklistPage.unblockConfirm')}
+              data-failed={t(locale, 'admin.blocklistPage.unblockFailed')}
+            >
+              {t(locale, 'admin.blocklistPage.unblock')}
+            </button>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+
+  <section class="mt-4 rounded-xl bg-white p-4 shadow-sm">
+    <h2 class="text-lg font-semibold">{t(locale, 'admin.blocklistPage.flaggedTitle')}</h2>
+    <p class="mt-1 text-sm text-slate-500">
+      {t(locale, 'admin.blocklistPage.flaggedHint')}
+    </p>
+    {flagged.length === 0 ? (
+      <p class="mt-2 text-sm text-slate-500">{t(locale, 'admin.blocklistPage.noFlags')}</p>
+    ) : (
+      <ul class="mt-3 divide-y divide-slate-100">
+        {flagged.map((row) => (
+          <li class="flex flex-wrap items-center justify-between gap-2 py-2">
+            <div>
+              <p class="font-mono text-sm">{row.phone}</p>
+              {row.reason && <p class="text-xs text-slate-500">{row.reason}</p>}
+              <p class="text-xs text-slate-400">
+                {formatDhakaDateTime(row.created_at, locale)}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="js-clear-flag rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+              data-phone={row.phone}
+              data-confirm={t(locale, 'admin.blocklistPage.clearFlagConfirm')}
+              data-failed={t(locale, 'admin.blocklistPage.clearFlagFailed')}
+            >
+              {t(locale, 'admin.blocklistPage.clearFlag')}
+            </button>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+</AdminLayout>
+
+<script>
+  import { adminErrorMessage } from '../../scripts/admin-errors';
+
+  async function mutate(url: string, init: RequestInit, failed: string): Promise<boolean> {
+    try {
+      const response = await fetch(url, {
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        ...init,
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: { code?: string };
+      } | null;
+      if (!response.ok || !payload?.ok) {
+        window.alert(adminErrorMessage(payload?.error?.code, failed));
+        return false;
+      }
+      return true;
+    } catch {
+      window.alert(failed);
+      return false;
+    }
+  }
+
+  const form = document.getElementById('blocklist-form') as HTMLFormElement | null;
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const phone = String(data.get('phone') ?? '').trim();
+    const reason = String(data.get('reason') ?? '').trim();
+    const button = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+    if (button) button.disabled = true;
+
+    const ok = await mutate(
+      '/api/admin/blocklist',
+      {
+        method: 'POST',
+        body: JSON.stringify({ phone, reason }),
+      },
+      form.dataset.failed ?? '',
+    );
+    if (ok) window.location.reload();
+    else if (button) button.disabled = false;
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.js-unblock').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!window.confirm(button.dataset.confirm ?? '')) return;
+      button.disabled = true;
+      const ok = await mutate(
+        `/api/admin/blocklist/${encodeURIComponent(button.dataset.phone ?? '')}`,
+        { method: 'DELETE' },
+        button.dataset.failed ?? '',
+      );
+      if (ok) window.location.reload();
+      else button.disabled = false;
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.js-clear-flag').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!window.confirm(button.dataset.confirm ?? '')) return;
+      button.disabled = true;
+      const ok = await mutate(
+        `/api/admin/blocklist/flags/${encodeURIComponent(button.dataset.phone ?? '')}`,
+        { method: 'DELETE' },
+        button.dataset.failed ?? '',
+      );
+      if (ok) window.location.reload();
+      else button.disabled = false;
+    });
+  });
+</script>

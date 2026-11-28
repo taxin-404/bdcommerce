@@ -15,8 +15,15 @@ ADMIN_PASSPHRASE=
 TURNSTILE_SITE_KEY=
 TURNSTILE_SECRET_KEY=
 
-# Optional secrets for later phases (courier, Facebook CAPI) will be documented
-# here when those integrations are added.
+# Optional. Steadfast courier integration. Leave both blank to hide every
+# courier button; checkout and the admin order page keep working normally.
+# Get these from the Steadfast merchant portal (API section). They are sent
+# only from the server to https://portal.packzy.com/api/v1, never to the browser.
+STEADFAST_API_KEY=
+STEADFAST_SECRET_KEY=
+
+# Optional secrets for later phases (Facebook CAPI) will be documented here when
+# that integration is added.
 
 # Optional plain variable, not a secret. Set it only after enabling R2 public
 # access (r2.dev or a custom domain), then set the same value in the deployed

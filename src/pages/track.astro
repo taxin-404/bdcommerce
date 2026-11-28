@@ -9,6 +9,7 @@ import { formatBdt, toBanglaDigits } from '../lib/money';
 import { findOrderForCustomer } from '../lib/orders';
 import { normalizePhone } from '../lib/phone';
 import { countRoundTrips, logQueryCount } from '../lib/query-log';
+import { hitRateLimit, rateLimitKey } from '../lib/rate-limit';
 import { trackSchema } from '../lib/validation/checkout';
 
 const requested = Astro.url.searchParams.get('lang');
@@ -39,6 +40,7 @@ const locale = resolveLocale(
 let orderNumber = '';
 let phone = '';
 let submitted = false;
+let rateLimited = false;
 let result: Awaited<ReturnType<typeof findOrderForCustomer>> = null;
 
 if (!unavailable && Astro.request.method === 'POST') {
@@ -52,9 +54,17 @@ if (!unavailable && Astro.request.method === 'POST') {
     phone = '';
   }
 
-  const parsed = trackSchema.safeParse({ order_number: orderNumber, phone });
-  const normalized = parsed.success ? normalizePhone(parsed.data.phone) : null;
-  if (parsed.success && normalized) {
+  const remoteIp = Astro.request.headers.get('cf-connecting-ip')?.trim() || null;
+  if (remoteIp) {
+    const limit = hitRateLimit(rateLimitKey('track', remoteIp), 10, 60_000);
+    rateLimited = !limit.allowed;
+  }
+
+  const parsed = rateLimited
+    ? null
+    : trackSchema.safeParse({ order_number: orderNumber, phone });
+  const normalized = parsed?.success ? normalizePhone(parsed.data.phone) : null;
+  if (parsed?.success && normalized) {
     try {
       result = await findOrderForCustomer(db, parsed.data.order_number, normalized);
     } catch {
@@ -140,7 +150,13 @@ const statusKeys: Record<string, string> = {
       </button>
     </form>
 
-    {submitted && !result && (
+    {rateLimited && (
+      <p class="mt-4 text-sm" role="alert" style="color:#be123c">
+        {t(locale, 'track.rateLimited')}
+      </p>
+    )}
+
+    {submitted && !result && !rateLimited && (
       <p class="mt-4 text-sm" role="alert" style="color:#be123c">
         {t(locale, 'track.notFound')}
       </p>

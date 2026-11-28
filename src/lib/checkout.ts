@@ -28,6 +28,7 @@ export type CheckoutFailure =
   | { ok: false; code: 'out_of_stock' }
   | { ok: false; code: 'idempotency_conflict' }
   | { ok: false; code: 'coupon_unavailable' }
+  | { ok: false; code: 'duplicate_payment_trx' }
   | { ok: false; code: 'db_unavailable' };
 
 export type CheckoutResult =
@@ -44,6 +45,10 @@ function isGuardError(message: string): boolean {
 
 function isCouponGuardError(message: string): boolean {
   return /coupon_guard/i.test(message) && /CHECK constraint failed/i.test(message);
+}
+
+function isDuplicateTrxError(message: string): boolean {
+  return /duplicate_payment_trx/i.test(message);
 }
 
 function isNumberCollision(message: string): boolean {
@@ -74,6 +79,7 @@ export async function createCheckoutOrder(input: {
   paymentSender?: string | null;
   paymentTrxId?: string | null;
   couponCode?: string | null;
+  ipHash?: string | null;
   now?: string;
 }): Promise<CheckoutResult> {
   const { db, idempotencyKey, customer, lines } = input;
@@ -84,6 +90,7 @@ export async function createCheckoutOrder(input: {
   const paymentSender = input.paymentSender ?? null;
   const paymentTrxId = input.paymentTrxId ?? null;
   const couponCode = input.couponCode ?? null;
+  const ipHash = input.ipHash ?? null;
 
   const tracked = lines.filter(
     (line): line is CheckoutLineSnapshot & { variant_id: number } =>
@@ -161,7 +168,7 @@ export async function createCheckoutOrder(input: {
              created_at, updated_at
            ) VALUES (
              ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-             ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?
+             ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?
            )`,
         )
         .bind(
@@ -183,6 +190,7 @@ export async function createCheckoutOrder(input: {
           paymentStatus,
           paymentTrxId,
           paymentSender,
+          ipHash,
           idempotencyKey,
           input.requestHash,
           now,
@@ -271,6 +279,19 @@ export async function createCheckoutOrder(input: {
         }
         if (existing) return { ok: false, code: 'idempotency_conflict' };
         throw error;
+      }
+
+      if (isDuplicateTrxError(message)) {
+        // A concurrent double-tap may have inserted the same order first.
+        const existing = await findExistingOrder();
+        if (
+          existing &&
+          existing.phone === customer.phone &&
+          (!existing.request_hash || existing.request_hash === input.requestHash)
+        ) {
+          return { ok: true, order: existing, existing: true };
+        }
+        return { ok: false, code: 'duplicate_payment_trx' };
       }
 
       if (isCouponGuardError(message)) {

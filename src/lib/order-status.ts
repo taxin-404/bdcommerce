@@ -141,6 +141,23 @@ export async function changeOrderStatus(input: {
         )
         .bind(orderId, orderId),
     );
+
+    // The optimistic transition above is the exactly-once guard: this batch
+    // only reaches the release when the status changed, so a concurrent
+    // cancel/return cannot decrement the coupon twice.
+    statements.push(
+      db
+        .prepare(
+          `UPDATE coupons
+              SET used = MAX(used - 1, 0)
+            WHERE code = (SELECT coupon_code FROM orders WHERE id = ?)
+              AND EXISTS (
+                SELECT 1 FROM orders
+                 WHERE id = ? AND status IN ('cancelled', 'returned')
+              )`,
+        )
+        .bind(orderId, orderId),
+    );
   }
 
   statements.push(

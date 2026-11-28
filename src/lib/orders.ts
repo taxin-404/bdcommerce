@@ -52,8 +52,8 @@ export interface OrderItemRow {
   line_total: number;
 }
 
-const ORDER_COLUMNS = `id, number, status, phone, request_hash, subtotal, shipping_fee, total,
-  payment_method, payment_status, created_at`;
+export const ORDER_SUMMARY_COLUMNS = `id, number, status, phone, request_hash, subtotal,
+  shipping_fee, total, payment_method, payment_status, created_at`;
 
 const ORDER_DETAIL_COLUMNS = `id, number, status, phone, subtotal, shipping_fee, total,
   payment_method, payment_status, created_at, customer_name, email, division,
@@ -64,7 +64,7 @@ export async function findOrderByIdempotencyKey(
   key: string,
 ): Promise<OrderSummaryRow | null> {
   return db
-    .prepare(`SELECT ${ORDER_COLUMNS} FROM orders WHERE idempotency_key = ? LIMIT 1`)
+    .prepare(`SELECT ${ORDER_SUMMARY_COLUMNS} FROM orders WHERE idempotency_key = ? LIMIT 1`)
     .bind(key)
     .first<OrderSummaryRow>();
 }

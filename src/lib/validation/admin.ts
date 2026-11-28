@@ -72,6 +72,19 @@ export const blocklistInputSchema = z.object({
   reason: z.string().trim().max(200).nullable().optional(),
 });
 
+export const blocklistPhoneParamSchema = z.object({
+  phone: z.string().trim().min(1).max(30),
+});
+
+export const courierActionSchema = z.object({
+  action: z.enum(['send', 'refresh']),
+});
+
+export const phoneFlagUpdateSchema = z.object({
+  flagged: z.boolean(),
+  reason: z.string().trim().max(200).nullable().optional(),
+});
+
 export const loginSchema = z.object({
   passphrase: z.string().min(1).max(500),
 });
