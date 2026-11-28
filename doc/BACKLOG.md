@@ -7,6 +7,7 @@ At the end of every phase, the agent appends its deferred items here. When an it
 - BEFORE REAL LAUNCH: verify the Steadfast integration with real merchant credentials (create a test parcel, refresh its status). Replace the community-doc assumptions in DECISIONS.md with the official docs from the Steadfast merchant dashboard. Decide whether to send delivery_type.
 
 ## Phase 8 (i18n, SEO, accessibility, Phase 7 follow-ups)
+- Manual bKash/Nagad payment UX at checkout: "Copy number" and "Copy amount" buttons; on mobile a "Open bKash/Nagad" dial link (tel: USSD code, verify the codes against current provider docs); optional QR image uploaded by the owner in Settings (stored in R2) and shown next to the number; short Bangla/English step-by-step instructions that differ for personal vs merchant wallets; a clear "order not confirmed until verified" notice.
 - Delivery-zone mapping is hardcoded to the `dhaka`/`outside` zone ids and Dhaka district. Make the district-to-zone mapping editable in admin settings, and allow adding/removing zones once mapping is editable.
 - The coupon admin page supports create, active toggle, and delete only. Add full edit for percent/fixed value, date window, and max uses.
 - A rejected wallet payment can only be re-verified after a manual rollback; add an explicit re-verify action if owners need it.
